@@ -24,10 +24,20 @@ export async function GET(req) {
   const limit = Number(url.searchParams.get("limit") || 0);
 
   try {
-    let seeds =
-      mode === "losers"
-        ? await harvestLoserCandidates()
-        : await fetchLeaderboard();
+    let diag = null;
+    let seeds;
+    if (mode === "losers") {
+      const opts = {};
+      for (const [qk, ok] of [["markets","markets"],["minUsd","minPositionUsd"],["maxPnl","maxLossPnl"],["cap","cap"]]) {
+        const v = url.searchParams.get(qk);
+        if (v !== null) opts[ok] = Number(v);
+      }
+      const h = await harvestLoserCandidates(opts);
+      seeds = h.candidates;
+      diag = h.diag;
+    } else {
+      seeds = await fetchLeaderboard();
+    }
     if (limit) seeds = seeds.slice(offset, offset + limit);
 
     let ok = 0, failed = 0, fade = 0;
@@ -46,7 +56,9 @@ export async function GET(req) {
       }
       await new Promise((r) => setTimeout(r, 200)); // polite pacing
     }
-    return NextResponse.json({ mode, ok, failed, fade, batch: { offset, limit: limit || seeds.length } });
+    const out = { mode, ok, failed, fade, batch: { offset, limit: limit || seeds.length } };
+    if (url.searchParams.get("debug") === "1" && diag) out.diag = diag;
+    return NextResponse.json(out);
   } catch (e) {
     return NextResponse.json({ error: e.message }, { status: 500 });
   }
