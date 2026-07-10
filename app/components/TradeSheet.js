@@ -6,7 +6,7 @@
 
 import { useEffect, useState } from "react";
 import {
-  hasWallet, createWallet, importWallet, unlockWallet,
+  hasWallet, createWallet, importWallet, unlockWallet, deleteWallet,
   getBalances, missingApprovals, grantApprovals,
 } from "@/lib/wallet";
 const PM_ADDR_RE = /^0x[a-fA-F0-9]{40}$/;
@@ -105,6 +105,19 @@ export default function TradeSheet({ target, onClose }) {
       } catch { /* non-blocking */ }
       await afterUnlock(await unlockWallet(pin));
     } catch (e) { fail(e); }
+  };
+
+  const doReset = async () => {
+    const really = window.confirm(
+      "Remove this wallet from the device?\n\nIf it holds funds and you haven't backed up the private key, they will be UNRECOVERABLE. Polymarket-connected accounts are safe — your funds stay on Polymarket and you can reconnect anytime."
+    );
+    if (!really) return;
+    await deleteWallet();
+    setPin(""); setImportKey(""); setPmAddress("");
+    setWallet(null); setClient(null); setBalances(null); setClobBalance(null);
+    setAcct({ sigType: 0, funder: null });
+    setSetupMode(null); setError("");
+    setStep("setup");
   };
 
   const doUnlock = async () => {
@@ -264,6 +277,9 @@ export default function TradeSheet({ target, onClose }) {
               <button className="btn primary" onClick={doUnlock}>Unlock</button>
             </div>
             {error && <div className="err">{error}</div>}
+            <button className="view-link" onClick={doReset}>
+              Forgot PIN or switching accounts? Remove wallet from this device
+            </button>
           </>
         )}
 
@@ -307,6 +323,10 @@ export default function TradeSheet({ target, onClose }) {
                 Enable trading — one-time approvals (uses a little POL)
               </button>
             )}
+
+            <button className="view-link" style={{ margin: "0 0 10px", textAlign: "left" }} onClick={doReset}>
+              Switch account / remove wallet from device
+            </button>
 
             <div className="eyebrow">Amount</div>
             <div className="preset-row">
