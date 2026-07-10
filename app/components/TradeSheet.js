@@ -85,6 +85,23 @@ export default function TradeSheet({ target, onClose }) {
     setStep("working"); setStatus("Placing order…");
     try {
       const r = await placeMarketBuy(client, { tokenID: target.tokenID, usd });
+      // CLOB returns 200 even for rejected/killed orders — inspect the body.
+      if (!r || r.success === false || r.errorMsg) {
+        const msg = String(r?.errorMsg || "Order rejected by the exchange.");
+        throw new Error(
+          /balance|allowance|collateral|insufficient/i.test(msg)
+            ? "Not enough tradable balance for this order. Fund your wallet (USDC on Polygon), run the one-time approvals, then hit ↻ and try again."
+            : msg
+        );
+      }
+      const st = String(r.status || "").toLowerCase();
+      if (st && !["matched", "mined", "confirmed", "success", "live"].includes(st)) {
+        throw new Error(
+          st === "unmatched" || st === "killed" || st === "cancelled"
+            ? "Fill-or-kill: not enough liquidity at this price right now, so the order was cancelled. Nothing was spent — try a smaller amount."
+            : `Order not filled (status: ${r.status}). Nothing was spent.`
+        );
+      }
       setResult(r);
       window.Telegram?.WebApp?.HapticFeedback?.notificationOccurred?.("success");
       setStep("done");
@@ -207,10 +224,20 @@ export default function TradeSheet({ target, onClose }) {
             </label>
 
             {error && <div className="err">{error}</div>}
-            <button className={`btn ${modeClass}`} style={{ width: "100%" }}
-              disabled={!confirmed || usd < 1 || !builderCodeConfigured()} onClick={doBuy}>
-              {modeLabel} — Buy {target.outcome} for {fmt(usd)}
-            </button>
+            {(() => {
+              const funds = clobBalance ?? balances?.collateral ?? 0;
+              const blocked =
+                !builderCodeConfigured() ? "Builder code not configured" :
+                needsApproval ? "Enable trading first (approvals above)" :
+                funds < usd ? `Fund wallet first — ${fmt(funds)} tradable of ${fmt(usd)} needed` :
+                null;
+              return (
+                <button className={`btn ${modeClass}`} style={{ width: "100%" }}
+                  disabled={!confirmed || usd < 1 || Boolean(blocked)} onClick={doBuy}>
+                  {blocked || `${modeLabel} — Buy ${target.outcome} for ${fmt(usd)}`}
+                </button>
+              );
+            })()}
           </>
         )}
 
@@ -218,9 +245,10 @@ export default function TradeSheet({ target, onClose }) {
           <>
             <div className="gauge-gapnum">✓<small>ORDER SUBMITTED</small></div>
             <p className="sheet-note">
-              {result?.orderID ? `Order ${String(result.orderID).slice(0, 10)}… ` : ""}
-              Fill-or-kill orders either fill instantly or cancel — check Portfolio for
-              your position.
+              {result?.orderID ? `Order ${String(result.orderID).slice(0, 10)}… — ` : ""}
+              status: {result?.status || "submitted"}
+              {result?.takingAmount ? ` · filled ${Number(result.takingAmount).toLocaleString()} shares` : ""}.
+              Check Portfolio for your position.
             </p>
             <button className="btn primary" style={{ width: "100%" }} onClick={onClose}>Done</button>
           </>
