@@ -44,7 +44,10 @@ export async function GET(req) {
     for (const seed of seeds) {
       try {
         const stats = await fetchWalletStats(seed.address);
-        const tier = classify(stats);
+        let tier = classify(stats);
+        // Losers mode: a wallet harvested for a deep current bag is a valid
+        // fade story on its own — unless its settled record proves it smart.
+        if (mode === "losers" && tier === "neutral") tier = "fade";
         if (tier === "fade") fade++;
         const row = { ...seed, ...stats, tier, updated_at: new Date().toISOString() };
         const { error } = await db().from("whales").upsert(row);
