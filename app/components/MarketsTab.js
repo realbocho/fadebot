@@ -35,6 +35,7 @@ function DivergenceGauge({ d }) {
 function XrayCard({ data, onTrade }) {
   const { market, summary, divergence, source } = data;
   const isMarketNative = source === "market";
+  const holdersMode = summary.mode === "holders";
 
   // Copy = buy the smart-money outcome; Fade = buy the other side.
   const pickTarget = (mode) => {
@@ -65,7 +66,7 @@ function XrayCard({ data, onTrade }) {
 
   return (
     <div className="card">
-      <div className="eyebrow">{isMarketNative ? "In-market smart money" : "Smart money x-ray"}</div>
+      <div className="eyebrow">{!isMarketNative ? "Smart money x-ray" : holdersMode ? "Market holders" : "In-market smart money"}</div>
       <h3>{market.question}</h3>
 
       {divergence ? (
@@ -75,13 +76,13 @@ function XrayCard({ data, onTrade }) {
           Whales lean {pct(summary.lean.share)} {summary.lean.outcome} ({fmtUsd(summary.lean.totalUsd)} tracked)
         </p>
       ) : (
-        <p className="empty">No sizeable positions found in this market yet — it may be brand new or very thin.</p>
+        <p className="empty">{data.positionCount === 0 ? "Nobody holds a position in this market yet." : "Positions here are all under $10 — too thin to read."}</p>
       )}
 
       {summary.tracked.length > 0 && (
         <>
           <div className="eyebrow" style={{ marginTop: 12 }}>
-            {isMarketNative ? "Top profitable holders in this market" : "Tracked positions"}
+            {!isMarketNative ? "Tracked positions" : holdersMode ? "Largest holders in this market" : "Top profitable holders in this market"}
           </div>
           {summary.tracked.map((e, i) => (
             <div className="row" key={i}>

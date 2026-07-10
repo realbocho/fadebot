@@ -1,9 +1,11 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/supabase";
-import { resolveMarket, fetchMarketPositions, smartMoneySummary, marketNativeSummary } from "@/lib/polymarket";
+import { resolveMarket, fetchMarketPositions, smartMoneySummary, marketNativeSummary, fetchMarketPositionsRaw } from "@/lib/polymarket";
 
 export async function GET(req) {
-  const q = new URL(req.url).searchParams.get("q");
+  const url = new URL(req.url);
+  const q = url.searchParams.get("q");
+  const debug = url.searchParams.get("debug") === "1";
   if (!q) return NextResponse.json({ error: "Missing market URL or slug." }, { status: 400 });
 
   try {
@@ -38,7 +40,9 @@ export async function GET(req) {
         };
       }
     }
-    return NextResponse.json({ market, summary, divergence, source });
+    const payload = { market, summary, divergence, source, positionCount: positions.length };
+    if (debug) payload.rawSample = await fetchMarketPositionsRaw(market.conditionId);
+    return NextResponse.json(payload);
   } catch (e) {
     return NextResponse.json({ error: e.message }, { status: 500 });
   }
