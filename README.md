@@ -38,7 +38,16 @@ Seed the whale league once (crons will keep it fresh):
 
 ```
 curl -H "Authorization: Bearer $CRON_SECRET" https://<domain>/api/cron/refresh
+curl -H "Authorization: Bearer $CRON_SECRET" "https://<domain>/api/cron/refresh?mode=losers"
 ```
+
+The second call is the **loser harvest**: it scans big trending markets for
+large wallets sitting on deep negative PnL — the fade-tier seed the winners-only
+leaderboard can never surface. A wallet is fade-tier if it's on a losing streak
+(FADE_STREAK_THRESHOLD) **or** its settled win rate is ≤ MAX_FADE_WIN_RATE.
+Schedule it daily too: on Vercel Pro add a second cron; on Hobby (2-cron/day
+limit, daily granularity) point cron-job.org at the `?mode=losers` URL with the
+same Authorization header.
 
 ### Crons
 

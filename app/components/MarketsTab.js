@@ -33,7 +33,8 @@ function DivergenceGauge({ d }) {
 }
 
 function XrayCard({ data, onTrade }) {
-  const { market, summary, divergence } = data;
+  const { market, summary, divergence, source } = data;
+  const isMarketNative = source === "market";
 
   // Copy = buy the smart-money outcome; Fade = buy the other side.
   const pickTarget = (mode) => {
@@ -64,7 +65,7 @@ function XrayCard({ data, onTrade }) {
 
   return (
     <div className="card">
-      <div className="eyebrow">Smart money x-ray</div>
+      <div className="eyebrow">{isMarketNative ? "In-market smart money" : "Smart money x-ray"}</div>
       <h3>{market.question}</h3>
 
       {divergence ? (
@@ -74,12 +75,14 @@ function XrayCard({ data, onTrade }) {
           Whales lean {pct(summary.lean.share)} {summary.lean.outcome} ({fmtUsd(summary.lean.totalUsd)} tracked)
         </p>
       ) : (
-        <p className="empty">No tracked whales hold this market above $1K yet.</p>
+        <p className="empty">No sizeable positions found in this market yet — it may be brand new or very thin.</p>
       )}
 
       {summary.tracked.length > 0 && (
         <>
-          <div className="eyebrow" style={{ marginTop: 12 }}>Tracked positions</div>
+          <div className="eyebrow" style={{ marginTop: 12 }}>
+            {isMarketNative ? "Top profitable holders in this market" : "Tracked positions"}
+          </div>
           {summary.tracked.map((e, i) => (
             <div className="row" key={i}>
               <div className="avatar" aria-hidden>🐋</div>
@@ -92,7 +95,8 @@ function XrayCard({ data, onTrade }) {
               </div>
               <div className="nums">
                 <b>{e.outcome} {fmtUsd(e.value)}</b>
-                {e.winRate != null && <span>WR {pct(e.winRate)}</span>}
+                {e.winRate != null ? <span>WR {pct(e.winRate)}</span>
+                  : e.totalPnl ? <span className={e.totalPnl >= 0 ? "pnl-pos" : "pnl-neg"}>PnL {e.totalPnl >= 0 ? "+" : "−"}{fmtUsd(Math.abs(e.totalPnl))}</span> : null}
               </div>
             </div>
           ))}

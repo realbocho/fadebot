@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/supabase";
-import { resolveMarket, fetchMarketPositions, smartMoneySummary } from "@/lib/polymarket";
+import { resolveMarket, fetchMarketPositions, smartMoneySummary, marketNativeSummary } from "@/lib/polymarket";
 
 export async function GET(req) {
   const q = new URL(req.url).searchParams.get("q");
@@ -16,7 +16,12 @@ export async function GET(req) {
       fetchMarketPositions(market.conditionId),
     ]);
     const byAddr = Object.fromEntries((whales || []).map((w) => [w.address, w]));
-    const summary = smartMoneySummary(positions, byAddr);
+    let summary = smartMoneySummary(positions, byAddr);
+    let source = "tracked";
+    if (!summary.lean && !summary.fadeAlerts.length) {
+      summary = marketNativeSummary(positions);
+      source = "market";
+    }
 
     // Divergence: smart-money lean share vs crowd price for the same outcome
     let divergence = null;
@@ -33,7 +38,7 @@ export async function GET(req) {
         };
       }
     }
-    return NextResponse.json({ market, summary, divergence });
+    return NextResponse.json({ market, summary, divergence, source });
   } catch (e) {
     return NextResponse.json({ error: e.message }, { status: 500 });
   }
