@@ -9,6 +9,7 @@ import {
   hasWallet, createWallet, importWallet, unlockWallet,
   getBalances, missingApprovals, grantApprovals,
 } from "@/lib/wallet";
+const PM_ADDR_RE = /^0x[a-fA-F0-9]{40}$/;
 import {
   createTradingClient, getClobBalance, placeMarketBuy, builderCodeConfigured,
 } from "@/lib/clob";
@@ -21,7 +22,11 @@ export default function TradeSheet({ target, onClose }) {
   const [step, setStep] = useState("boot"); // boot|setup|unlock|ready|working|done|error
   const [pin, setPin] = useState("");
   const [importKey, setImportKey] = useState("");
+  const [setupMode, setSetupMode] = useState(null); // null | 'connect' | 'fresh'
   const [showImport, setShowImport] = useState(false);
+  const [pmAddress, setPmAddress] = useState("");
+  const [pmAccountType, setPmAccountType] = useState(1); // 1 email/Google · 2 crypto wallet
+  const [acct, setAcct] = useState({ sigType: 0, funder: null });
   const [wallet, setWallet] = useState(null);
   const [client, setClient] = useState(null);
   const [balances, setBalances] = useState(null);
@@ -39,19 +44,28 @@ export default function TradeSheet({ target, onClose }) {
 
   const fail = (e) => { setError(e.message || String(e)); setStep("error"); };
 
-  const afterUnlock = async (w) => {
+  const afterUnlock = async ({ wallet: w, funder, sigType }) => {
     setStatus("Connecting to the order book…");
     setWallet(w);
-    const c = await createTradingClient(w);
+    setAcct({ sigType, funder });
+    const c = await createTradingClient(w, { sigType, funder });
     setClient(c);
-    const [bal, clob, missing] = await Promise.all([
-      getBalances(w.address),
-      getClobBalance(c),
-      missingApprovals(w.address),
-    ]);
-    setBalances(bal);
-    setClobBalance(clob);
-    setNeedsApproval(missing.length > 0);
+    if (sigType === 0) {
+      const [bal, clob, missing] = await Promise.all([
+        getBalances(w.address),
+        getClobBalance(c),
+        missingApprovals(w.address),
+      ]);
+      setBalances(bal);
+      setClobBalance(clob);
+      setNeedsApproval(missing.length > 0);
+    } else {
+      // Polymarket account: funds live in the Polymarket proxy — no POL,
+      // no approvals, balance comes straight from the CLOB.
+      setBalances(null);
+      setClobBalance(await getClobBalance(c));
+      setNeedsApproval(false);
+    }
     setStep("ready");
     setStatus("");
   };
@@ -63,6 +77,32 @@ export default function TradeSheet({ target, onClose }) {
       showImport && importKey
         ? await importWallet(pin, importKey)
         : await createWallet(pin);
+      await afterUnlock(await unlockWallet(pin));
+    } catch (e) { fail(e); }
+  };
+
+  const doConnectPolymarket = async () => {
+    if (pin.length < 4) return setError("PIN needs at least 4 digits.");
+    if (!importKey.trim()) return setError("Paste the private key exported from Polymarket.");
+    if (!PM_ADDR_RE.test(pmAddress.trim()))
+      return setError("Paste your Polymarket address (0x…, shown on your profile).");
+    setError(""); setStep("working"); setStatus("Connecting your Polymarket account…");
+    try {
+      await importWallet(pin, importKey, {
+        funder: pmAddress.trim().toLowerCase(),
+        sigType: pmAccountType,
+      });
+      // Best effort: link the address so the Portfolio tab works immediately.
+      try {
+        await fetch("/api/user", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "x-tg-init-data": window.Telegram?.WebApp?.initData || "",
+          },
+          body: JSON.stringify({ pm_address: pmAddress.trim() }),
+        });
+      } catch { /* non-blocking */ }
       await afterUnlock(await unlockWallet(pin));
     } catch (e) { fail(e); }
   };
@@ -110,7 +150,7 @@ export default function TradeSheet({ target, onClose }) {
 
   const refresh = async () => {
     if (!wallet || !client) return;
-    setBalances(await getBalances(wallet.address));
+    if (acct.sigType === 0) setBalances(await getBalances(wallet.address));
     setClobBalance(await getClobBalance(client));
   };
 
@@ -132,12 +172,65 @@ export default function TradeSheet({ target, onClose }) {
 
         {step === "boot" && <div className="loading">Checking device…</div>}
 
-        {step === "setup" && (
+        {step === "setup" && !setupMode && (
+          <>
+            <p className="sheet-note">
+              Already on Polymarket? Connect your account and trade straight from your
+              existing balance — no deposits, no gas. Or create a fresh wallet.
+            </p>
+            <div className="btn-pair" style={{ flexDirection: "column" }}>
+              <button className="btn primary" onClick={() => setSetupMode("connect")}>
+                Connect Polymarket account (recommended)
+              </button>
+              <button className="btn ghost" onClick={() => setSetupMode("fresh")}>
+                Create a fresh wallet instead
+              </button>
+            </div>
+          </>
+        )}
+
+        {step === "setup" && setupMode === "connect" && (
+          <>
+            <p className="sheet-note">
+              In Polymarket: Settings → <b>Export Private Key</b>. Paste it below with
+              your Polymarket address (top of your profile page). The key is encrypted
+              with your PIN and stored only on this device — FadeBot's servers never
+              see it. Anyone with this key controls your funds; never share it in chat.
+            </p>
+            <div className="field">
+              <input type="password" placeholder="Private key from Polymarket (0x…)"
+                value={importKey} onChange={(e) => setImportKey(e.target.value)}
+                aria-label="Polymarket private key" />
+            </div>
+            <div className="field">
+              <input placeholder="Your Polymarket address (0x…)" value={pmAddress}
+                onChange={(e) => setPmAddress(e.target.value)} aria-label="Polymarket address" />
+            </div>
+            <div className="preset-row" role="radiogroup" aria-label="Login method">
+              <button className={`btn small ${pmAccountType === 1 ? "primary" : "ghost"}`}
+                onClick={() => setPmAccountType(1)}>I log in with email/Google</button>
+              <button className={`btn small ${pmAccountType === 2 ? "primary" : "ghost"}`}
+                onClick={() => setPmAccountType(2)}>I log in with a crypto wallet</button>
+            </div>
+            <div className="field">
+              <input type="password" inputMode="numeric" placeholder="Choose a PIN (4+ digits)"
+                value={pin} onChange={(e) => setPin(e.target.value)} aria-label="PIN" />
+            </div>
+            {error && <div className="err">{error}</div>}
+            <div className="btn-pair">
+              <button className="btn primary" onClick={doConnectPolymarket}>Connect</button>
+              <button className="btn ghost" onClick={() => { setError(""); setSetupMode(null); }}>Back</button>
+            </div>
+          </>
+        )}
+
+        {step === "setup" && setupMode === "fresh" && (
           <>
             <p className="sheet-note">
               Trades are signed by a wallet that lives only on this device, locked with a
               PIN. FadeBot's servers never see your key. Losing the PIN means losing
-              access — back up the key after creating it.
+              access — back up the key after creating it. You'll need to fund it with
+              USDC + a little POL (Polygon).
             </p>
             <div className="field">
               <input type="password" inputMode="numeric" placeholder="Choose a PIN (4+ digits)"
@@ -158,6 +251,7 @@ export default function TradeSheet({ target, onClose }) {
                 {showImport ? "Create new instead" : "Import existing"}
               </button>
             </div>
+            <button className="view-link" onClick={() => { setError(""); setSetupMode(null); }}>← Back</button>
           </>
         )}
 
@@ -178,15 +272,26 @@ export default function TradeSheet({ target, onClose }) {
         {step === "ready" && (
           <>
             <div className="wallet-strip mono">
-              <span>{wallet.address.slice(0, 6)}…{wallet.address.slice(-4)}</span>
+              <span>
+                {acct.sigType !== 0 ? "PM " : ""}
+                {(acct.funder || wallet.address).slice(0, 6)}…{(acct.funder || wallet.address).slice(-4)}
+              </span>
               <span>
                 {clobBalance != null ? `${fmt(clobBalance)} tradable` : balances ? `${fmt(balances.collateral)} USDC` : "…"}
-                {" · "}{balances ? `${balances.pol.toFixed(3)} POL` : ""}
+                {acct.sigType === 0 && balances ? ` · ${balances.pol.toFixed(3)} POL` : ""}
               </span>
               <button className="btn small ghost" onClick={refresh}>↻</button>
             </div>
 
-            {(clobBalance ?? balances?.collateral ?? 0) <= 0 && (
+            {acct.sigType !== 0 && (clobBalance ?? 0) <= 0 && (
+              <p className="sheet-note">
+                Your Polymarket balance reads $0. Top up on polymarket.com, then hit ↻.
+                If you know the balance isn't zero, check the address and login-method
+                you connected with.
+              </p>
+            )}
+
+            {acct.sigType === 0 && (clobBalance ?? balances?.collateral ?? 0) <= 0 && (
               <p className="sheet-note">
                 Fund this wallet to trade: send USDC (Polygon) for buying power and a
                 little POL (~0.1) for one-time approvals. Deposit address is above —
