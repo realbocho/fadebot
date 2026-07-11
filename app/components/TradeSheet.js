@@ -626,8 +626,8 @@ function SheetCore({ target, onClose, privy }) {
               <div className="quote mono" style={{ marginBottom: 8, opacity: 0.8 }}>
                 <span>
                   On-chain: {funding
-                    ? `pUSD $${funding.pusd.toFixed(2)} · USDC.e $${funding.usdce.toFixed(2)} · USDC $${funding.usdc.toFixed(2)}`
-                    : "tap ↻ to scan"} · v2
+                    ? `pUSD $${funding.pusd.toFixed(2)} · USDC.e $${funding.usdce.toFixed(2)} · USDC $${funding.usdc.toFixed(2)} · wrappable $${Number(funding.wrappable ?? 0).toFixed(2)}`
+                    : "tap ↻ to scan"} · sig{acct.sigType} · v3
                 </span>
               </div>
             )}
@@ -701,36 +701,34 @@ function SheetCore({ target, onClose, privy }) {
               </>
             )}
 
-            {acct.sigType === 3 && safeBal <= 0 && (
+            {acct.sigType === 3 && funding && funding.wrappable > 0 && (
               <>
-                {funding && funding.wrappable > 0 ? (
-                  <>
-                    <p className="sheet-note">
-                      Found <b style={{ color: "var(--smart)" }}>${funding.wrappable.toFixed(2)} USDC</b> at
-                      your trading address
-                      {funding.usdc > 0 && funding.usdce > 0
-                        ? ` ($${funding.usdce.toFixed(2)} USDC.e + $${funding.usdc.toFixed(2)} native)`
-                        : funding.usdc > 0 ? " (native)" : " (USDC.e)"}.
-                      Polymarket trades in pUSD — one tap converts it, gas-free.
-                      {funding.usdc > 0 && " Native USDC is auto-swapped to USDC.e first (~0.01% pool fee)."}
-                    </p>
-                    <button className="btn primary" style={{ width: "100%", marginBottom: 10 }} onClick={doWrap}>
-                      Convert ${funding.wrappable.toFixed(2)} to trading balance
-                    </button>
-                  </>
-                ) : (
-                  <p className="sheet-note">
-                    Fund your trading account: send USDC (Polygon) to your trading
-                    address — tap to copy:{" "}
-                    <button className="btn small ghost mono"
-                      onClick={() => { navigator.clipboard?.writeText(acct.funder);
-                        window.Telegram?.WebApp?.HapticFeedback?.notificationOccurred?.("success"); }}>
-                      {acct.funder?.slice(0, 10)}… copy
-                    </button>
-                    {" "}Then hit ↻ — the app will detect it and convert it for you.
-                  </p>
-                )}
+                <p className="sheet-note">
+                  Found <b style={{ color: "var(--smart)" }}>${funding.wrappable.toFixed(2)} USDC</b> at
+                  your trading address
+                  {funding.usdc > 0 && funding.usdce > 0
+                    ? ` ($${funding.usdce.toFixed(2)} USDC.e + $${funding.usdc.toFixed(2)} native)`
+                    : funding.usdc > 0 ? " (native)" : " (USDC.e)"}.
+                  Polymarket trades in pUSD — one tap converts it, gas-free.
+                  {funding.usdc > 0 && " Native USDC is auto-swapped to USDC.e first (~0.01% pool fee)."}
+                </p>
+                <button className="btn primary" style={{ width: "100%", marginBottom: 10 }} onClick={doWrap}>
+                  Convert ${funding.wrappable.toFixed(2)} to trading balance
+                </button>
               </>
+            )}
+
+            {acct.sigType === 3 && safeBal <= 0 && !(funding && funding.wrappable > 0) && (
+              <p className="sheet-note">
+                Fund your trading account: send USDC (Polygon) to your trading
+                address — tap to copy:{" "}
+                <button className="btn small ghost mono"
+                  onClick={() => { navigator.clipboard?.writeText(acct.funder);
+                    window.Telegram?.WebApp?.HapticFeedback?.notificationOccurred?.("success"); }}>
+                  {acct.funder?.slice(0, 10)}… copy
+                </button>
+                {" "}Then hit ↻ — the app will detect it and convert it for you.
+              </p>
             )}
 
             {acct.sigType === 1 || acct.sigType === 2 ? safeBal <= 0 && (
