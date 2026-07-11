@@ -307,7 +307,7 @@ function SheetCore({ target, onClose, privy }) {
       // wrapped into pUSD before the CLOB counts it. Detect and offer one tap.
       const fb = await getFundingBreakdown(acct.funder);
       setFunding(fb);
-      if (fb.wrappable <= 0 && fb.pusd <= 0) {
+      if (fb.usdce <= 0 && fb.usdc <= 0 && fb.pusd <= 0) {
         const raw = await getClobBalanceRaw(client);
         setError("Balance still $0 — nothing detected at " + acct.funder.slice(0, 10) +
           "…. CLOB response: " + JSON.stringify(raw));
@@ -494,17 +494,29 @@ function SheetCore({ target, onClose, privy }) {
 
             {acct.sigType === 3 && (clobBalance ?? 0) <= 0 && (
               <>
-                {funding && funding.wrappable > 0 ? (
+                {funding && funding.usdce > 0 ? (
                   <>
                     <p className="sheet-note">
-                      Found <b style={{ color: "var(--smart)" }}>${funding.wrappable.toFixed(2)} USDC</b> at
+                      Found <b style={{ color: "var(--smart)" }}>${funding.usdce.toFixed(2)} USDC.e</b> at
                       your trading address. Polymarket trades in pUSD, so it needs one
                       gasless conversion — then it's ready to bet with.
                     </p>
                     <button className="btn primary" style={{ width: "100%", marginBottom: 10 }} onClick={doWrap}>
-                      Convert ${funding.wrappable.toFixed(2)} to trading balance
+                      Convert ${funding.usdce.toFixed(2)} to trading balance
                     </button>
                   </>
+                ) : funding && funding.usdc > 0 ? (
+                  <p className="sheet-note">
+                    Found <b style={{ color: "var(--crowd)" }}>${funding.usdc.toFixed(2)} native USDC</b>,
+                    but the converter only accepts <b>USDC.e</b> (bridged USDC). Easiest
+                    fix: fund via Polymarket's own deposit flow (it auto-converts any
+                    token), or send USDC.e on Polygon to your trading address:{" "}
+                    <button className="btn small ghost mono"
+                      onClick={() => { navigator.clipboard?.writeText(acct.funder);
+                        window.Telegram?.WebApp?.HapticFeedback?.notificationOccurred?.("success"); }}>
+                      {acct.funder?.slice(0, 10)}… copy
+                    </button>
+                  </p>
                 ) : (
                   <p className="sheet-note">
                     Fund your trading account: send USDC (Polygon) to your trading
