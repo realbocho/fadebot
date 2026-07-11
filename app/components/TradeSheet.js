@@ -9,7 +9,7 @@ import {
   hasWallet, createWallet, importWallet, unlockWallet, deleteWallet, updateWalletMeta,
   getBalances, missingApprovals, grantApprovals,
 } from "@/lib/wallet";
-import { ensureDepositAccount, deriveDepositAddress, getFundingBreakdown, wrapToTradable, withdrawFromDepositWallet } from "@/lib/deposit";
+import { ensureDepositAccount, deriveDepositAddress, getFundingBreakdown, wrapToTradable, withdrawFromDepositWallet, redeemWinnings } from "@/lib/deposit";
 import { fetchUserPositions } from "@/lib/polymarket";
 const PM_ADDR_RE = /^0x[a-fA-F0-9]{40}$/;
 import {
@@ -86,11 +86,13 @@ function SheetCore({ target, onClose, privy }) {
   const [error, setError] = useState("");
   const [result, setResult] = useState(null);
   const [myShares, setMyShares] = useState(0); // shares held of THIS market's token
+  const [claimable, setClaimable] = useState(null); // { items: [{conditionId, negRisk}], total }
   const [showWithdraw, setShowWithdraw] = useState(false);
   const [wdAmt, setWdAmt] = useState("");
   const wdAddrRef = useRef(null);
 
-  // Load the user's position in this market whenever the account is ready.
+  // Load the user's position in this market — and any resolved, unclaimed
+  // winnings across all markets — whenever the account is ready.
   useEffect(() => {
     const addr = acct.funder || wallet?.address;
     if (step !== "ready" || !addr) return;
@@ -101,7 +103,19 @@ function SheetCore({ target, onClose, privy }) {
           (p) => String(p.asset ?? p.tokenId ?? p.token_id) === String(target.tokenID)
         );
         setMyShares(Number(mine?.size ?? 0));
-      } catch { setMyShares(0); }
+
+        // Redeemable = market resolved, tokens not yet burned for pUSD.
+        const seen = new Set();
+        const items = []; let total = 0;
+        for (const p of positions || []) {
+          if (!p?.redeemable || !p.conditionId) continue;
+          total += Number(p.size ?? 0) * Number(p.curPrice ?? 0);
+          if (seen.has(p.conditionId)) continue;
+          seen.add(p.conditionId);
+          items.push({ conditionId: p.conditionId, negRisk: Boolean(p.negativeRisk ?? p.negRisk) });
+        }
+        setClaimable(items.length ? { items, total } : null);
+      } catch { setMyShares(0); setClaimable(null); }
     })();
   }, [step, acct.funder, wallet?.address, target.tokenID]);
 
@@ -396,6 +410,19 @@ function SheetCore({ target, onClose, privy }) {
     } catch (e) { fail(e); }
   };
 
+  // Redeem all resolved winning positions into the tradable balance.
+  const doClaim = async () => {
+    setStep("working");
+    try {
+      const signer = privy?.authenticated ? await privy.getSigner() : wallet;
+      const r = await redeemWinnings(signer, acct.funder, claimable.items, setStatus);
+      setResult({ action: "claim", ...r, total: claimable.total });
+      setClaimable(null);
+      setClobBalance(await syncClobBalance(client));
+      setStep("done"); setStatus("");
+    } catch (e) { fail(e); }
+  };
+
   const modeLabel = target.mode === "fade" ? "FADE" : "COPY";
   const modeClass = target.mode === "fade" ? "danger" : "primary";
 
@@ -555,6 +582,15 @@ function SheetCore({ target, onClose, privy }) {
               <button className="btn small ghost" onClick={refresh}>↻</button>
             </div>
 
+            {acct.sigType === 3 && claimable && (
+              <div className="quote mono" style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
+                <span style={{ flex: 1 }}>
+                  🏆 {fmt(claimable.total)} in resolved winnings across {claimable.items.length} market{claimable.items.length > 1 ? "s" : ""}.
+                </span>
+                <button className="btn small primary" onClick={doClaim}>Claim</button>
+              </div>
+            )}
+
             {myShares > 0 && (
               <div className="quote mono" style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
                 <span style={{ flex: 1 }}>
@@ -693,10 +729,12 @@ function SheetCore({ target, onClose, privy }) {
         {step === "done" && (
           <>
             <div className="gauge-gapnum">✓<small>
-              {result?.action === "withdraw" ? "WITHDRAWAL SENT" : result?.action === "sell" ? "POSITION SOLD" : "ORDER SUBMITTED"}
+              {result?.action === "withdraw" ? "WITHDRAWAL SENT" : result?.action === "sell" ? "POSITION SOLD" : result?.action === "claim" ? "WINNINGS CLAIMED" : "ORDER SUBMITTED"}
             </small></div>
             <p className="sheet-note">
-              {result?.action === "withdraw" ? (
+              {result?.action === "claim" ? (
+                <>Redeemed {result.redeemed} market{result.redeemed > 1 ? "s" : ""} — ~{fmt(result.total)} added to your tradable balance. Hit ↻ if it hasn't updated yet.</>
+              ) : result?.action === "withdraw" ? (
                 <>Sent ${Number(result.withdrawn).toFixed(2)} as USDC.e to {String(result.to).slice(0, 8)}…{String(result.to).slice(-4)} on Polygon. It should arrive within a minute.</>
               ) : (
                 <>
