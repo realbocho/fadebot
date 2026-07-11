@@ -118,35 +118,35 @@ function SheetCore({ target, onClose, privy }) {
   const [wdAmt, setWdAmt] = useState("");
   const wdAddrRef = useRef(null);
 
-  // Load the user's position in this market — and any resolved, unclaimed
-  // winnings across all markets — whenever the account is ready.
-  useEffect(() => {
+  // Scan the user's position in this market — and any resolved, unclaimed
+  // winnings across all markets. Called on entry AND on every ↻.
+  const scanPositions = async () => {
     const addr = acct.funder || wallet?.address;
-    if (step !== "ready" || !addr) return;
-    (async () => {
-      try {
-        const positions = await fetchUserPositions(addr);
-        const mine = (positions || []).find(
-          (p) => String(p.asset ?? p.tokenId ?? p.token_id) === String(target.tokenID)
-        );
-        setMyShares(Number(mine?.size ?? 0));
+    if (!addr) return;
+    try {
+      const positions = await fetchUserPositions(addr);
+      const mine = (positions || []).find(
+        (p) => String(p.asset) === String(target.tokenID)
+      );
+      setMyShares(Number(mine?.size ?? 0));
+      setShowDeposit((v) => v || (safeBal <= 0));
 
-        // First-time users land with $0 — open the deposit guide for them.
-        setShowDeposit((v) => v || (safeBal <= 0));
+      const seen = new Set();
+      const items = []; let total = 0;
+      for (const p of positions || []) {
+        if (!p?.redeemable || !p.conditionId) continue;
+        total += Number(p.size ?? 0) * Number(p.curPrice ?? 0);
+        if (seen.has(p.conditionId)) continue;
+        seen.add(p.conditionId);
+        items.push({ conditionId: p.conditionId, negRisk: Boolean(p.negativeRisk) });
+      }
+      setClaimable(items.length ? { items, total } : null);
+    } catch { /* keep previous values */ }
+  };
 
-        // Redeemable = market resolved, tokens not yet burned for pUSD.
-        const seen = new Set();
-        const items = []; let total = 0;
-        for (const p of positions || []) {
-          if (!p?.redeemable || !p.conditionId) continue;
-          total += Number(p.size ?? 0) * Number(p.curPrice ?? 0);
-          if (seen.has(p.conditionId)) continue;
-          seen.add(p.conditionId);
-          items.push({ conditionId: p.conditionId, negRisk: Boolean(p.negativeRisk ?? p.negRisk) });
-        }
-        setClaimable(items.length ? { items, total } : null);
-      } catch { setMyShares(0); setClaimable(null); }
-    })();
+  useEffect(() => {
+    if (step === "ready") scanPositions();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [step, acct.funder, wallet?.address, target.tokenID]);
 
   useEffect(() => {
@@ -372,6 +372,7 @@ function SheetCore({ target, onClose, privy }) {
     if (acct.sigType === 0) setBalances(await getBalances(wallet.address));
     const bal = await syncClobBalance(client);
     setClobBalance(bal);
+    scanPositions();
     if (acct.sigType === 3) {
       // Always show what's actually on-chain — a silent UI is undebuggable.
       let fb;
