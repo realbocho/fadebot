@@ -24,9 +24,19 @@ export default function TradeSheet({ target, onClose }) {
   const pinRef = useRef(null);
   const keyRef = useRef(null);
   const addrRef = useRef(null);
-  const readPin = () => pinRef.current?.value?.trim() || "";
-  const readKey = () => keyRef.current?.value?.trim() || "";
-  const readAddr = () => addrRef.current?.value?.trim() || "";
+  const readField = (ref, label) => {
+    const fromRef = ref.current?.value;
+    if (fromRef && fromRef.trim()) return fromRef.trim();
+    // Fallback: read the mounted input directly. Telegram webviews and some
+    // Android keyboards can leave a stale/detached ref while the visible DOM
+    // node holds the real value.
+    const els = document.querySelectorAll(`.sheet input[aria-label="${label}"]`);
+    for (const el of els) if (el.value && el.value.trim()) return el.value.trim();
+    return "";
+  };
+  const readPin = () => readField(pinRef, "PIN");
+  const readKey = () => readField(keyRef, "Polymarket private key") || readField(keyRef, "Private key");
+  const readAddr = () => readField(addrRef, "Polymarket address");
   const [setupMode, setSetupMode] = useState(null); // null | 'connect' | 'fresh'
   const [showImport, setShowImport] = useState(false);
   const [pmAccountType, setPmAccountType] = useState(1); // 1 email/Google · 2 crypto wallet
@@ -94,7 +104,8 @@ export default function TradeSheet({ target, onClose }) {
 
   const doCreateAccount = async () => {
     const pin = readPin();
-    if (pin.length < 4) return setError("PIN needs at least 4 digits.");
+    if (pin.length < 4)
+      return setError(`PIN needs at least 4 digits (read ${pin.length} character${pin.length === 1 ? "" : "s"} — if you typed more, tap the PIN box once and press the button again).`);
     setError(""); setStep("working"); setStatus("Creating your trading account…");
     try {
       if (!(await hasWallet())) await createWallet(pin);
