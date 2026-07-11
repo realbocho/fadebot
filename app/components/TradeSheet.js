@@ -9,10 +9,11 @@ import {
   hasWallet, createWallet, importWallet, unlockWallet, deleteWallet, updateWalletMeta,
   getBalances, missingApprovals, grantApprovals,
 } from "@/lib/wallet";
-import { ensureDepositAccount, deriveDepositAddress, getFundingBreakdown, wrapToTradable } from "@/lib/deposit";
+import { ensureDepositAccount, deriveDepositAddress, getFundingBreakdown, wrapToTradable, withdrawFromDepositWallet } from "@/lib/deposit";
+import { fetchUserPositions } from "@/lib/polymarket";
 const PM_ADDR_RE = /^0x[a-fA-F0-9]{40}$/;
 import {
-  createTradingClient, getClobBalance, getClobBalanceRaw, syncClobBalance, placeMarketBuy, builderCodeConfigured,
+  createTradingClient, getClobBalance, getClobBalanceRaw, syncClobBalance, placeMarketBuy, placeMarketSell, builderCodeConfigured,
 } from "@/lib/clob";
 
 const PRESETS = [10, 25, 50, 100];
@@ -84,6 +85,25 @@ function SheetCore({ target, onClose, privy }) {
   const [status, setStatus] = useState("");
   const [error, setError] = useState("");
   const [result, setResult] = useState(null);
+  const [myShares, setMyShares] = useState(0); // shares held of THIS market's token
+  const [showWithdraw, setShowWithdraw] = useState(false);
+  const [wdAmt, setWdAmt] = useState("");
+  const wdAddrRef = useRef(null);
+
+  // Load the user's position in this market whenever the account is ready.
+  useEffect(() => {
+    const addr = acct.funder || wallet?.address;
+    if (step !== "ready" || !addr) return;
+    (async () => {
+      try {
+        const positions = await fetchUserPositions(addr);
+        const mine = (positions || []).find(
+          (p) => String(p.asset ?? p.tokenId ?? p.token_id) === String(target.tokenID)
+        );
+        setMyShares(Number(mine?.size ?? 0));
+      } catch { setMyShares(0); }
+    })();
+  }, [step, acct.funder, wallet?.address, target.tokenID]);
 
   useEffect(() => {
     (async () => {
@@ -335,7 +355,44 @@ function SheetCore({ target, onClose, privy }) {
       await wrapToTradable(signer, acct.funder, setStatus);
       setClobBalance(await syncClobBalance(client));
       setFunding(await getFundingBreakdown(acct.funder));
-      setStep("ready"); setStatus("");
+    } catch (e) { fail(e); }
+  };
+
+  // Sell the full position in this market's outcome token (FOK market sell).
+  const doSell = async () => {
+    setStep("working"); setStatus("Selling position…");
+    try {
+      const r = await placeMarketSell(client, { tokenID: target.tokenID, shares: myShares });
+      if (!r || r.success === false || r.errorMsg)
+        throw new Error(String(r?.errorMsg || "Sell rejected by the exchange."));
+      const st = String(r.status || "").toLowerCase();
+      if (st && !["matched", "mined", "confirmed", "success", "live"].includes(st))
+        throw new Error(
+          st === "unmatched" || st === "killed" || st === "cancelled"
+            ? "Fill-or-kill: not enough buyers at this price right now, so the sell was cancelled. Your shares are untouched — try again later."
+            : `Sell not filled (status: ${r.status}). Your shares are untouched.`
+        );
+      setResult({ ...r, action: "sell" });
+      setClobBalance(await syncClobBalance(client));
+      setMyShares(0);
+      setStep("done"); setStatus("");
+    } catch (e) { fail(e); }
+  };
+
+  // Withdraw pUSD → USDC.e to an external Polygon address (deposit wallets only).
+  const doWithdraw = async () => {
+    const to = (wdAddrRef.current?.value || "").trim();
+    const amt = wdAmt === "" ? null : Number(wdAmt);
+    if (!PM_ADDR_RE.test(to)) return setError("Paste a valid Polygon address (0x…).");
+    if (amt != null && (!Number.isFinite(amt) || amt <= 0)) return setError("Enter a valid amount, or leave blank to withdraw everything.");
+    setError(""); setStep("working");
+    try {
+      const signer = privy?.authenticated ? await privy.getSigner() : wallet;
+      const r = await withdrawFromDepositWallet(signer, acct.funder, to, amt, setStatus);
+      setResult({ action: "withdraw", ...r });
+      setClobBalance(await syncClobBalance(client));
+      setShowWithdraw(false); setWdAmt("");
+      setStep("done"); setStatus("");
     } catch (e) { fail(e); }
   };
 
@@ -498,6 +555,41 @@ function SheetCore({ target, onClose, privy }) {
               <button className="btn small ghost" onClick={refresh}>↻</button>
             </div>
 
+            {myShares > 0 && (
+              <div className="quote mono" style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
+                <span style={{ flex: 1 }}>
+                  You hold {myShares.toLocaleString()} {target.outcome} shares in this market.
+                </span>
+                <button className="btn small danger" onClick={doSell}>Sell all</button>
+              </div>
+            )}
+
+            {acct.sigType === 3 && (clobBalance ?? 0) > 0 && (
+              <>
+                <button className="view-link" style={{ margin: "0 0 8px", textAlign: "left" }}
+                  onClick={() => setShowWithdraw((v) => !v)}>
+                  {showWithdraw ? "▾ Withdraw funds" : "▸ Withdraw funds"}
+                </button>
+                {showWithdraw && (
+                  <div style={{ marginBottom: 12 }}>
+                    <p className="sheet-note">
+                      Sends <b>USDC.e on Polygon</b> to the address below — make sure it's a
+                      Polygon address you control (exchange deposit addresses must support
+                      USDC.e on Polygon). Gas-free.
+                    </p>
+                    <input className="preset-custom mono" style={{ width: "100%", marginBottom: 6 }}
+                      ref={wdAddrRef} placeholder="Destination address (0x…)" aria-label="Withdrawal address" />
+                    <div style={{ display: "flex", gap: 8 }}>
+                      <input className="preset-custom mono" style={{ flex: 1 }} type="number" min="1"
+                        value={wdAmt} onChange={(e) => setWdAmt(e.target.value)}
+                        placeholder={`Amount (blank = all ${fmt(clobBalance ?? 0)})`} aria-label="Withdrawal amount" />
+                      <button className="btn ghost" onClick={doWithdraw}>Withdraw</button>
+                    </div>
+                  </div>
+                )}
+              </>
+            )}
+
             {acct.sigType === 3 && (clobBalance ?? 0) <= 0 && (
               <>
                 {funding && funding.wrappable > 0 ? (
@@ -600,12 +692,20 @@ function SheetCore({ target, onClose, privy }) {
 
         {step === "done" && (
           <>
-            <div className="gauge-gapnum">✓<small>ORDER SUBMITTED</small></div>
+            <div className="gauge-gapnum">✓<small>
+              {result?.action === "withdraw" ? "WITHDRAWAL SENT" : result?.action === "sell" ? "POSITION SOLD" : "ORDER SUBMITTED"}
+            </small></div>
             <p className="sheet-note">
-              {result?.orderID ? `Order ${String(result.orderID).slice(0, 10)}… — ` : ""}
-              status: {result?.status || "submitted"}
-              {result?.takingAmount ? ` · filled ${Number(result.takingAmount).toLocaleString()} shares` : ""}.
-              Check Portfolio for your position.
+              {result?.action === "withdraw" ? (
+                <>Sent ${Number(result.withdrawn).toFixed(2)} as USDC.e to {String(result.to).slice(0, 8)}…{String(result.to).slice(-4)} on Polygon. It should arrive within a minute.</>
+              ) : (
+                <>
+                  {result?.orderID ? `Order ${String(result.orderID).slice(0, 10)}… — ` : ""}
+                  status: {result?.status || "submitted"}
+                  {result?.takingAmount ? ` · ${result?.action === "sell" ? "received" : "filled"} ${Number(result.takingAmount).toLocaleString()} ${result?.action === "sell" ? "" : "shares"}` : ""}.
+                  {result?.action === "sell" ? " Proceeds are in your tradable balance." : " Check Portfolio for your position."}
+                </>
+              )}
             </p>
             <button className="btn primary" style={{ width: "100%" }} onClick={onClose}>Done</button>
           </>
