@@ -346,13 +346,13 @@ function SheetCore({ target, onClose, privy }) {
     if (acct.sigType === 0) setBalances(await getBalances(wallet.address));
     const bal = await syncClobBalance(client);
     setClobBalance(bal);
-    if (acct.sigType === 3 && (bal ?? 0) <= 0) {
-      // Most common cause: raw USDC sent directly to the address — it must be
-      // wrapped into pUSD before the CLOB counts it. Detect and offer one tap.
+    if (acct.sigType === 3) {
+      // Always show what's actually on-chain — a silent UI is undebuggable.
       let fb;
       try { fb = await getFundingBreakdown(acct.funder); }
       catch (e) { setError(e.message); return; }
       setFunding(fb);
+      if ((bal ?? 0) > 0) { setError(""); return; }
       if (fb.usdce <= 0 && fb.usdc <= 0 && fb.pusd <= 0) {
         const raw = await getClobBalanceRaw(client);
         setError("Balance still $0 — nothing detected at " + acct.funder.slice(0, 10) +
@@ -365,6 +365,12 @@ function SheetCore({ target, onClose, privy }) {
         ", response: " + JSON.stringify(raw));
     }
   };
+
+  // Auto-scan balances once the sheet is ready — don't wait for a manual ↻.
+  useEffect(() => {
+    if (step === "ready" && client) refresh();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [step, client]);
 
   const doWrap = async () => {
     setStep("working");
@@ -589,6 +595,16 @@ function SheetCore({ target, onClose, privy }) {
               </span>
               <button className="btn small ghost" onClick={refresh}>↻</button>
             </div>
+
+            {acct.sigType === 3 && (
+              <div className="quote mono" style={{ marginBottom: 8, opacity: 0.8 }}>
+                <span>
+                  On-chain: {funding
+                    ? `pUSD $${funding.pusd.toFixed(2)} · USDC.e $${funding.usdce.toFixed(2)} · USDC $${funding.usdc.toFixed(2)}`
+                    : "tap ↻ to scan"} · v2
+                </span>
+              </div>
+            )}
 
             {acct.sigType === 3 && (
               <>
