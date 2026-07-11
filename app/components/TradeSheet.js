@@ -4,7 +4,27 @@
 // wallet (create/import + PIN) → fund → one-time approvals → market buy.
 // All signing happens on-device; the key is stored PIN-encrypted.
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, Component } from "react";
+
+// Surfaces render crashes inside the sheet with the actual message —
+// otherwise Next.js shows an opaque "Application error" page.
+class SheetErrorBoundary extends Component {
+  constructor(p) { super(p); this.state = { err: null }; }
+  static getDerivedStateFromError(err) { return { err }; }
+  render() {
+    if (!this.state.err) return this.props.children;
+    return (
+      <div className="sheet-overlay" onClick={this.props.onClose}>
+        <div className="sheet" onClick={(e) => e.stopPropagation()}>
+          <div className="err" style={{ padding: "14px 0", wordBreak: "break-word" }}>
+            Something crashed: {String(this.state.err?.message || this.state.err)}
+          </div>
+          <button className="btn ghost" style={{ width: "100%" }} onClick={this.props.onClose}>Close</button>
+        </div>
+      </div>
+    );
+  }
+}
 import {
   hasWallet, createWallet, importWallet, unlockWallet, deleteWallet, updateWalletMeta,
   getBalances, missingApprovals, grantApprovals,
@@ -25,7 +45,11 @@ const PRIVY_ENABLED = Boolean(process.env.NEXT_PUBLIC_PRIVY_APP_ID);
 // gasless deposit-wallet account — no PIN, no keys. Without it, the PIN-wallet
 // flow below still works, so Privy setup is optional.
 export default function TradeSheet(props) {
-  return PRIVY_ENABLED ? <PrivySheet {...props} /> : <SheetCore {...props} privy={null} />;
+  return (
+    <SheetErrorBoundary onClose={props.onClose}>
+      {PRIVY_ENABLED ? <PrivySheet {...props} /> : <SheetCore {...props} privy={null} />}
+    </SheetErrorBoundary>
+  );
 }
 
 function PrivySheet(props) {
@@ -108,7 +132,7 @@ function SheetCore({ target, onClose, privy }) {
         setMyShares(Number(mine?.size ?? 0));
 
         // First-time users land with $0 — open the deposit guide for them.
-        setShowDeposit((v) => v || (NumbersafeBal <= 0));
+        setShowDeposit((v) => v || (safeBal <= 0));
 
         // Redeemable = market resolved, tokens not yet burned for pUSD.
         const seen = new Set();
