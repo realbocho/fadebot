@@ -520,9 +520,13 @@ function SheetCore({ target, onClose, privy }) {
                       Copy address {acct.funder?.slice(0, 8)}…{acct.funder?.slice(-4)}
                     </button>
                     <button className="btn primary" style={{ width: "100%", marginBottom: 10 }}
-                      onClick={() => window.Telegram?.WebApp?.openLink?.("https://polymarket.com/deposit") || window.open("https://polymarket.com/deposit")}>
-                      Open Polymarket deposit
+                      onClick={() => window.Telegram?.WebApp?.openLink?.("https://polymarket.com") || window.open("https://polymarket.com")}>
+                      Open Polymarket (log in → Deposit)
                     </button>
+                    <p className="sheet-note" style={{ marginTop: -4 }}>
+                      Polymarket doesn't have a direct deposit link — log in, then tap
+                      "Deposit" in the top-right menu.
+                    </p>
                   </>
                 ) : (
                   <p className="sheet-note">
