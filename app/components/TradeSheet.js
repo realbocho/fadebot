@@ -4,14 +4,15 @@
 // wallet (create/import + PIN) → fund → one-time approvals → market buy.
 // All signing happens on-device; the key is stored PIN-encrypted.
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
-  hasWallet, createWallet, importWallet, unlockWallet, deleteWallet,
+  hasWallet, createWallet, importWallet, unlockWallet, deleteWallet, updateWalletMeta,
   getBalances, missingApprovals, grantApprovals,
 } from "@/lib/wallet";
+import { ensureDepositAccount, getDepositBalance } from "@/lib/deposit";
 const PM_ADDR_RE = /^0x[a-fA-F0-9]{40}$/;
 import {
-  createTradingClient, getClobBalance, placeMarketBuy, builderCodeConfigured,
+  createTradingClient, getClobBalance, syncClobBalance, placeMarketBuy, builderCodeConfigured,
 } from "@/lib/clob";
 
 const PRESETS = [10, 25, 50, 100];
@@ -20,11 +21,14 @@ const fmt = (n) => "$" + Number(n).toLocaleString("en-US", { maximumFractionDigi
 export default function TradeSheet({ target, onClose }) {
   // target: { market, outcome, tokenID, refPrice, mode: 'copy'|'fade' }
   const [step, setStep] = useState("boot"); // boot|setup|unlock|ready|working|done|error
-  const [pin, setPin] = useState("");
-  const [importKey, setImportKey] = useState("");
+  const pinRef = useRef(null);
+  const keyRef = useRef(null);
+  const addrRef = useRef(null);
+  const readPin = () => pinRef.current?.value?.trim() || "";
+  const readKey = () => keyRef.current?.value?.trim() || "";
+  const readAddr = () => addrRef.current?.value?.trim() || "";
   const [setupMode, setSetupMode] = useState(null); // null | 'connect' | 'fresh'
   const [showImport, setShowImport] = useState(false);
-  const [pmAddress, setPmAddress] = useState("");
   const [pmAccountType, setPmAccountType] = useState(1); // 1 email/Google · 2 crypto wallet
   const [acct, setAcct] = useState({ sigType: 0, funder: null });
   const [wallet, setWallet] = useState(null);
@@ -59,9 +63,15 @@ export default function TradeSheet({ target, onClose }) {
       setBalances(bal);
       setClobBalance(clob);
       setNeedsApproval(missing.length > 0);
+    } else if (sigType === 3) {
+      // Official deposit-wallet account: fully gasless, approvals were set
+      // via the relayer at creation. Sync the CLOB balance cache and read it.
+      setBalances(null);
+      setClobBalance(await syncClobBalance(c));
+      setNeedsApproval(false);
     } else {
-      // Polymarket account: funds live in the Polymarket proxy — no POL,
-      // no approvals, balance comes straight from the CLOB.
+      // Connected Polymarket account (proxy/Safe): funds live on Polymarket —
+      // no POL, no approvals, balance comes straight from the CLOB.
       setBalances(null);
       setClobBalance(await getClobBalance(c));
       setNeedsApproval(false);
@@ -71,6 +81,7 @@ export default function TradeSheet({ target, onClose }) {
   };
 
   const doCreate = async () => {
+    const pin = readPin(), importKey = readKey();
     if (pin.length < 4) return setError("PIN needs at least 4 digits.");
     setError(""); setStep("working"); setStatus("Creating your trading wallet…");
     try {
@@ -81,15 +92,40 @@ export default function TradeSheet({ target, onClose }) {
     } catch (e) { fail(e); }
   };
 
-  const doConnectPolymarket = async () => {
+  const doCreateAccount = async () => {
+    const pin = readPin();
     if (pin.length < 4) return setError("PIN needs at least 4 digits.");
-    if (!importKey.trim()) return setError("Paste the private key exported from Polymarket.");
-    if (!PM_ADDR_RE.test(pmAddress.trim()))
+    setError(""); setStep("working"); setStatus("Creating your trading account…");
+    try {
+      if (!(await hasWallet())) await createWallet(pin);
+      const { wallet: w } = await unlockWallet(pin);
+      const { depositWallet } = await ensureDepositAccount(w, setStatus);
+      await updateWalletMeta({ funder: depositWallet.toLowerCase(), sigType: 3 });
+      // Link for the Portfolio tab (best effort)
+      try {
+        await fetch("/api/user", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "x-tg-init-data": window.Telegram?.WebApp?.initData || "",
+          },
+          body: JSON.stringify({ pm_address: depositWallet }),
+        });
+      } catch { /* non-blocking */ }
+      await afterUnlock(await unlockWallet(pin));
+    } catch (e) { fail(e); }
+  };
+
+  const doConnectPolymarket = async () => {
+    const pin = readPin(), importKey = readKey(), pmAddress = readAddr();
+    if (!importKey) return setError("Paste the private key exported from Polymarket.");
+    if (!PM_ADDR_RE.test(pmAddress))
       return setError("Paste your Polymarket address (0x…, shown on your profile).");
+    if (pin.length < 4) return setError("PIN needs at least 4 digits.");
     setError(""); setStep("working"); setStatus("Connecting your Polymarket account…");
     try {
       await importWallet(pin, importKey, {
-        funder: pmAddress.trim().toLowerCase(),
+        funder: pmAddress.toLowerCase(),
         sigType: pmAccountType,
       });
       // Best effort: link the address so the Portfolio tab works immediately.
@@ -100,7 +136,7 @@ export default function TradeSheet({ target, onClose }) {
             "Content-Type": "application/json",
             "x-tg-init-data": window.Telegram?.WebApp?.initData || "",
           },
-          body: JSON.stringify({ pm_address: pmAddress.trim() }),
+          body: JSON.stringify({ pm_address: pmAddress }),
         });
       } catch { /* non-blocking */ }
       await afterUnlock(await unlockWallet(pin));
@@ -113,7 +149,9 @@ export default function TradeSheet({ target, onClose }) {
     );
     if (!really) return;
     await deleteWallet();
-    setPin(""); setImportKey(""); setPmAddress("");
+    if (pinRef.current) pinRef.current.value = "";
+    if (keyRef.current) keyRef.current.value = "";
+    if (addrRef.current) addrRef.current.value = "";
     setWallet(null); setClient(null); setBalances(null); setClobBalance(null);
     setAcct({ sigType: 0, funder: null });
     setSetupMode(null); setError("");
@@ -121,6 +159,8 @@ export default function TradeSheet({ target, onClose }) {
   };
 
   const doUnlock = async () => {
+    const pin = readPin();
+    if (!pin) return setError("Enter your PIN.");
     setError(""); setStep("working"); setStatus("Unlocking…");
     try { await afterUnlock(await unlockWallet(pin)); } catch (e) { fail(e); }
   };
@@ -164,7 +204,7 @@ export default function TradeSheet({ target, onClose }) {
   const refresh = async () => {
     if (!wallet || !client) return;
     if (acct.sigType === 0) setBalances(await getBalances(wallet.address));
-    setClobBalance(await getClobBalance(client));
+    setClobBalance(acct.sigType === 3 ? await syncClobBalance(client) : await getClobBalance(client));
   };
 
   const modeLabel = target.mode === "fade" ? "FADE" : "COPY";
@@ -188,17 +228,23 @@ export default function TradeSheet({ target, onClose }) {
         {step === "setup" && !setupMode && (
           <>
             <p className="sheet-note">
-              Already on Polymarket? Connect your account and trade straight from your
-              existing balance — no deposits, no gas. Or create a fresh wallet.
+              Set up a trading account in one tap — no gas, no seed phrases, no key
+              pasting. You just pick a PIN. (Powered by Polymarket's official
+              deposit-wallet flow.)
             </p>
-            <div className="btn-pair" style={{ flexDirection: "column" }}>
-              <button className="btn primary" onClick={() => setSetupMode("connect")}>
-                Connect Polymarket account (recommended)
-              </button>
-              <button className="btn ghost" onClick={() => setSetupMode("fresh")}>
-                Create a fresh wallet instead
-              </button>
+            <div className="field">
+              <input ref={pinRef} type="password" inputMode="numeric"
+                placeholder="Choose a PIN (4+ digits)" autoComplete="off"
+                onFocus={(e) => setTimeout(() => e.target.scrollIntoView({ block: "center", behavior: "smooth" }), 250)}
+                aria-label="PIN" />
             </div>
+            {error && <div className="err">{error}</div>}
+            <button className="btn primary" style={{ width: "100%" }} onClick={doCreateAccount}>
+              Create trading account
+            </button>
+            <button className="view-link" onClick={() => setSetupMode("connect")}>
+              Advanced: trade from an existing Polymarket account
+            </button>
           </>
         )}
 
@@ -211,13 +257,13 @@ export default function TradeSheet({ target, onClose }) {
               see it. Anyone with this key controls your funds; never share it in chat.
             </p>
             <div className="field">
-              <input type="password" placeholder="Private key from Polymarket (0x…)"
-                value={importKey} onChange={(e) => setImportKey(e.target.value)}
+              <input ref={keyRef} type="password" placeholder="Private key from Polymarket (0x…)"
+                autoComplete="off" onFocus={(e) => setTimeout(() => e.target.scrollIntoView({ block: "center", behavior: "smooth" }), 250)}
                 aria-label="Polymarket private key" />
             </div>
             <div className="field">
-              <input placeholder="Your Polymarket address (0x…)" value={pmAddress}
-                onChange={(e) => setPmAddress(e.target.value)} aria-label="Polymarket address" />
+              <input ref={addrRef} placeholder="Your Polymarket address (0x…)"
+                autoComplete="off" onFocus={(e) => setTimeout(() => e.target.scrollIntoView({ block: "center", behavior: "smooth" }), 250)} aria-label="Polymarket address" />
             </div>
             <div className="preset-row" role="radiogroup" aria-label="Login method">
               <button className={`btn small ${pmAccountType === 1 ? "primary" : "ghost"}`}
@@ -226,8 +272,8 @@ export default function TradeSheet({ target, onClose }) {
                 onClick={() => setPmAccountType(2)}>I log in with a crypto wallet</button>
             </div>
             <div className="field">
-              <input type="password" inputMode="numeric" placeholder="Choose a PIN (4+ digits)"
-                value={pin} onChange={(e) => setPin(e.target.value)} aria-label="PIN" />
+              <input ref={pinRef} type="password" inputMode="numeric" placeholder="Choose a PIN (4+ digits)"
+                autoComplete="off" onFocus={(e) => setTimeout(() => e.target.scrollIntoView({ block: "center", behavior: "smooth" }), 250)} aria-label="PIN" />
             </div>
             {error && <div className="err">{error}</div>}
             <div className="btn-pair">
@@ -246,13 +292,13 @@ export default function TradeSheet({ target, onClose }) {
               USDC + a little POL (Polygon).
             </p>
             <div className="field">
-              <input type="password" inputMode="numeric" placeholder="Choose a PIN (4+ digits)"
-                value={pin} onChange={(e) => setPin(e.target.value)} aria-label="PIN" />
+              <input ref={pinRef} type="password" inputMode="numeric" placeholder="Choose a PIN (4+ digits)"
+                autoComplete="off" onFocus={(e) => setTimeout(() => e.target.scrollIntoView({ block: "center", behavior: "smooth" }), 250)} aria-label="PIN" />
             </div>
             {showImport && (
               <div className="field">
-                <input type="password" placeholder="Private key (0x…)" value={importKey}
-                  onChange={(e) => setImportKey(e.target.value)} aria-label="Private key" />
+                <input ref={keyRef} type="password" placeholder="Private key (0x…)"
+                  autoComplete="off" onFocus={(e) => setTimeout(() => e.target.scrollIntoView({ block: "center", behavior: "smooth" }), 250)} aria-label="Private key" />
               </div>
             )}
             {error && <div className="err">{error}</div>}
@@ -271,8 +317,8 @@ export default function TradeSheet({ target, onClose }) {
         {step === "unlock" && (
           <>
             <div className="field">
-              <input type="password" inputMode="numeric" placeholder="Enter your PIN"
-                value={pin} onChange={(e) => setPin(e.target.value)}
+              <input ref={pinRef} type="password" inputMode="numeric" placeholder="Enter your PIN"
+                autoComplete="off" onFocus={(e) => setTimeout(() => e.target.scrollIntoView({ block: "center", behavior: "smooth" }), 250)}
                 onKeyDown={(e) => e.key === "Enter" && doUnlock()} aria-label="PIN" />
               <button className="btn primary" onClick={doUnlock}>Unlock</button>
             </div>
@@ -299,13 +345,27 @@ export default function TradeSheet({ target, onClose }) {
               <button className="btn small ghost" onClick={refresh}>↻</button>
             </div>
 
-            {acct.sigType !== 0 && (clobBalance ?? 0) <= 0 && (
+            {acct.sigType === 3 && (clobBalance ?? 0) <= 0 && (
+              <p className="sheet-note">
+                Fund your trading account to start: deposit from any chain via
+                Polymarket's bridge, or send pUSD (Polygon) directly to your trading
+                address — tap to copy:{" "}
+                <button className="btn small ghost mono"
+                  onClick={() => { navigator.clipboard?.writeText(acct.funder);
+                    window.Telegram?.WebApp?.HapticFeedback?.notificationOccurred?.("success"); }}>
+                  {acct.funder?.slice(0, 10)}… copy
+                </button>
+                {" "}Then hit ↻.
+              </p>
+            )}
+
+            {acct.sigType === 1 || acct.sigType === 2 ? (clobBalance ?? 0) <= 0 && (
               <p className="sheet-note">
                 Your Polymarket balance reads $0. Top up on polymarket.com, then hit ↻.
                 If you know the balance isn't zero, check the address and login-method
                 you connected with.
               </p>
-            )}
+            ) : null}
 
             {acct.sigType === 0 && (clobBalance ?? balances?.collateral ?? 0) <= 0 && (
               <p className="sheet-note">

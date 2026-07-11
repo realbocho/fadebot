@@ -88,15 +88,35 @@ POL on Polygon → one-time approvals → fill-or-kill market buy via CLOB V2.
 **Every order carries your builder code in the onchain `builder` field** —
 that is what attributes volume and accrues your fees.
 
-### Enable fees (one-time)
+### Enable fees + gasless accounts (one-time)
 
 1. Go to `polymarket.com/settings?tab=builder`, create your builder profile,
-   copy the bytes32 **builder code**.
+   copy the bytes32 **builder code** AND generate **Builder API keys**
+   (key / secret / passphrase).
 2. Set your **fee rate** in the same profile (rates are public; changes are
    gated: one per 7 days, effective after 3 days).
-3. Add `NEXT_PUBLIC_BUILDER_CODE=<bytes32>` in Vercel env → redeploy.
-4. Optional but recommended: set `NEXT_PUBLIC_POLYGON_RPC` to a private RPC
-   (Alchemy/Infura free tier) — the public RPC rate-limits under load.
+3. Vercel env vars → redeploy (uncached):
+   - `NEXT_PUBLIC_BUILDER_CODE=<bytes32>` (order attribution)
+   - `BUILDER_API_KEY`, `BUILDER_SECRET`, `BUILDER_PASS_PHRASE` (server-only —
+     power `/api/polymarket/sign`, the remote-signing endpoint the relayer SDK
+     calls for gasless account creation/approvals; gated by Telegram initData)
+   - `NEXT_PUBLIC_POLYGON_RPC` — a private RPC (Alchemy free tier). Required in
+     practice: both public defaults rate-limit.
+   - `NEXT_PUBLIC_RELAYER_URL` — defaults to the Polymarket relayer; override
+     only if docs specify differently.
+
+### Account model (official deposit-wallet flow)
+
+Primary onboarding is Polymarket's canonical V2 flow: the app generates an
+owner key on-device (PIN-encrypted, Telegram CloudStorage), the relayer
+deploys a deterministic **deposit wallet** (`WALLET-CREATE`, no user gas) and
+grants trading approvals via a gasless `WALLET` batch. Orders sign as
+`POLY_1271` (sigType 3) with the deposit wallet as funder. Users fund with
+**pUSD** (Polymarket USD) — via Polymarket's bridge from any chain, or a
+direct pUSD transfer on Polygon. No POL, no manual approvals, no key pasting.
+
+Advanced path (kept for existing Polymarket users): import the key exported
+from Polymarket settings to trade the existing account balance (sigType 1/2).
 
 ### $1 smoke test before announcing (required)
 
