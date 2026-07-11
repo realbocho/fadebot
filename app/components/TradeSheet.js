@@ -685,9 +685,10 @@ function SheetCore({ target, onClose, privy }) {
                 {showWithdraw && (
                   <div style={{ marginBottom: 12 }}>
                     <p className="sheet-note">
-                      Sends <b>USDC.e on Polygon</b> to the address below — make sure it's a
-                      Polygon address you control (exchange deposit addresses must support
-                      USDC.e on Polygon). Gas-free.
+                      Arrives as <b>native USDC on Polygon</b> (auto-converted, gas-free) —
+                      the standard USDC that exchanges and wallets accept. Make sure the
+                      destination is a <b>Polygon</b> address you control, and never a
+                      Polymarket address (its balance won't reflect direct transfers).
                     </p>
                     <input className="preset-custom mono" style={{ width: "100%", marginBottom: 6 }}
                       ref={wdAddrRef} placeholder="Destination address (0x…)" aria-label="Withdrawal address" />
