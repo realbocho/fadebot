@@ -78,6 +78,8 @@ function SheetCore({ target, onClose, privy }) {
   const [client, setClient] = useState(null);
   const [balances, setBalances] = useState(null);
   const [clobBalance, setClobBalance] = useState(null);
+  // NaN-proof view of the CLOB balance: unknown reads as 0 for gating.
+  const safeBal = Number.isFinite(clobBalance) ? clobBalance : 0;
   const [needsApproval, setNeedsApproval] = useState(false);
   const [funding, setFunding] = useState(null); // {pusd, usdc, usdce, wrappable}
   const [usd, setUsd] = useState(25);
@@ -106,7 +108,7 @@ function SheetCore({ target, onClose, privy }) {
         setMyShares(Number(mine?.size ?? 0));
 
         // First-time users land with $0 — open the deposit guide for them.
-        setShowDeposit((v) => v || (Number(clobBalance ?? 0) <= 0));
+        setShowDeposit((v) => v || (NumbersafeBal <= 0));
 
         // Redeemable = market resolved, tokens not yet burned for pUSD.
         const seen = new Set();
@@ -590,7 +592,7 @@ function SheetCore({ target, onClose, privy }) {
                 {(acct.funder || wallet.address).slice(0, 6)}…{(acct.funder || wallet.address).slice(-4)} ⧉
               </span>
               <span>
-                {clobBalance != null ? `${fmt(clobBalance)} tradable` : balances ? `${fmt(balances.collateral)} USDC` : "…"}
+                {Number.isFinite(clobBalance) ? `${fmt(clobBalance)} tradable` : balances ? `${fmt(balances.collateral)} USDC` : "…"}
                 {acct.sigType === 0 && balances ? ` · ${balances.pol.toFixed(3)} POL` : ""}
               </span>
               <button className="btn small ghost" onClick={refresh}>↻</button>
@@ -649,7 +651,7 @@ function SheetCore({ target, onClose, privy }) {
               </div>
             )}
 
-            {acct.sigType === 3 && (clobBalance ?? 0) > 0 && (
+            {acct.sigType === 3 && safeBal > 0 && (
               <>
                 <button className="view-link" style={{ margin: "0 0 8px", textAlign: "left" }}
                   onClick={() => setShowWithdraw((v) => !v)}>
@@ -667,7 +669,7 @@ function SheetCore({ target, onClose, privy }) {
                     <div style={{ display: "flex", gap: 8 }}>
                       <input className="preset-custom mono" style={{ flex: 1 }} type="number" min="1"
                         value={wdAmt} onChange={(e) => setWdAmt(e.target.value)}
-                        placeholder={`Amount (blank = all ${fmt(clobBalance ?? 0)})`} aria-label="Withdrawal amount" />
+                        placeholder={`Amount (blank = all ${fmt(safeBal)})`} aria-label="Withdrawal amount" />
                       <button className="btn ghost" onClick={doWithdraw}>Withdraw</button>
                     </div>
                   </div>
@@ -675,7 +677,7 @@ function SheetCore({ target, onClose, privy }) {
               </>
             )}
 
-            {acct.sigType === 3 && (clobBalance ?? 0) <= 0 && (
+            {acct.sigType === 3 && safeBal <= 0 && (
               <>
                 {funding && funding.wrappable > 0 ? (
                   <>
@@ -707,7 +709,7 @@ function SheetCore({ target, onClose, privy }) {
               </>
             )}
 
-            {acct.sigType === 1 || acct.sigType === 2 ? (clobBalance ?? 0) <= 0 && (
+            {acct.sigType === 1 || acct.sigType === 2 ? safeBal <= 0 && (
               <p className="sheet-note">
                 Your Polymarket balance reads $0. Top up on polymarket.com, then hit ↻.
                 If you know the balance isn't zero, check the address and login-method
@@ -759,7 +761,7 @@ function SheetCore({ target, onClose, privy }) {
 
             {error && <div className="err">{error}</div>}
             {(() => {
-              const funds = clobBalance ?? balances?.collateral ?? 0;
+              const funds = Number.isFinite(clobBalance) ? clobBalance : (balances?.collateral ?? 0);
               const blocked =
                 !builderCodeConfigured() ? "Builder code not configured" :
                 needsApproval ? "Enable trading first (approvals above)" :
