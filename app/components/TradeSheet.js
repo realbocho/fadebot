@@ -9,7 +9,7 @@ import {
   hasWallet, createWallet, importWallet, unlockWallet, deleteWallet, updateWalletMeta,
   getBalances, missingApprovals, grantApprovals,
 } from "@/lib/wallet";
-import { ensureDepositAccount, getDepositBalance } from "@/lib/deposit";
+import { ensureDepositAccount, deriveDepositAddress, getFundingBreakdown, wrapToTradable } from "@/lib/deposit";
 const PM_ADDR_RE = /^0x[a-fA-F0-9]{40}$/;
 import {
   createTradingClient, getClobBalance, getClobBalanceRaw, syncClobBalance, placeMarketBuy, builderCodeConfigured,
@@ -71,13 +71,14 @@ function SheetCore({ target, onClose, privy }) {
   const readAddr = () => readField(addrRef, "Polymarket address");
   const [setupMode, setSetupMode] = useState(null); // null | 'connect' | 'fresh'
   const [showImport, setShowImport] = useState(false);
-  const [pmAccountType, setPmAccountType] = useState(1); // 1 email/Google · 2 crypto wallet
+  const [pmAccountType, setPmAccountType] = useState(3); // 3 modern deposit-wallet · 1 legacy proxy · 2 Safe
   const [acct, setAcct] = useState({ sigType: 0, funder: null });
   const [wallet, setWallet] = useState(null);
   const [client, setClient] = useState(null);
   const [balances, setBalances] = useState(null);
   const [clobBalance, setClobBalance] = useState(null);
   const [needsApproval, setNeedsApproval] = useState(false);
+  const [funding, setFunding] = useState(null); // {pusd, usdc, usdce, wrappable}
   const [usd, setUsd] = useState(25);
   const [confirmed, setConfirmed] = useState(false);
   const [status, setStatus] = useState("");
@@ -202,15 +203,27 @@ function SheetCore({ target, onClose, privy }) {
   const doConnectPolymarket = async () => {
     const pin = readPin(), importKey = readKey(), pmAddress = readAddr();
     if (!importKey) return setError("Paste the private key exported from Polymarket.");
-    if (!PM_ADDR_RE.test(pmAddress))
-      return setError("Paste your Polymarket address (0x…, shown on your profile).");
     if (pin.length < 4) return setError("PIN needs at least 4 digits.");
+    // sigType 3 (modern email/Google accounts) derives the deposit wallet from
+    // the owner key — no address to paste. Types 1/2 need the profile address.
+    if (pmAccountType !== 3 && !PM_ADDR_RE.test(pmAddress))
+      return setError("Paste your Polymarket address (0x…, shown on your profile).");
     setError(""); setStep("working"); setStatus("Connecting your Polymarket account…");
     try {
+      let funder = pmAddress.toLowerCase();
+      if (pmAccountType === 3) {
+        setStatus("Finding your trading wallet…");
+        const { wallet: probe } = await (async () => {
+          await importWallet(pin, importKey, { funder: "0x", sigType: 3 });
+          return unlockWallet(pin);
+        })();
+        funder = (await deriveDepositAddress(probe)).toLowerCase();
+      }
       await importWallet(pin, importKey, {
-        funder: pmAddress.toLowerCase(),
+        funder,
         sigType: pmAccountType,
       });
+      const pmAddressForLink = funder;
       // Best effort: link the address so the Portfolio tab works immediately.
       try {
         await fetch("/api/user", {
@@ -219,7 +232,7 @@ function SheetCore({ target, onClose, privy }) {
             "Content-Type": "application/json",
             "x-tg-init-data": window.Telegram?.WebApp?.initData || "",
           },
-          body: JSON.stringify({ pm_address: pmAddress }),
+          body: JSON.stringify({ pm_address: pmAddressForLink }),
         });
       } catch { /* non-blocking */ }
       await afterUnlock(await unlockWallet(pin));
@@ -289,16 +302,35 @@ function SheetCore({ target, onClose, privy }) {
     if (acct.sigType === 0) setBalances(await getBalances(wallet.address));
     const bal = await syncClobBalance(client);
     setClobBalance(bal);
-    // Diagnostic: if a connected account still reads $0, surface what the CLOB
-    // actually returned and which funder/sigType we queried with.
-    if (acct.sigType !== 0 && (bal ?? 0) <= 0) {
+    if (acct.sigType === 3 && (bal ?? 0) <= 0) {
+      // Most common cause: raw USDC sent directly to the address — it must be
+      // wrapped into pUSD before the CLOB counts it. Detect and offer one tap.
+      const fb = await getFundingBreakdown(acct.funder);
+      setFunding(fb);
+      if (fb.wrappable <= 0 && fb.pusd <= 0) {
+        const raw = await getClobBalanceRaw(client);
+        setError("Balance still $0 — nothing detected at " + acct.funder.slice(0, 10) +
+          "…. CLOB response: " + JSON.stringify(raw));
+      } else { setError(""); }
+    } else if (acct.sigType !== 0 && (bal ?? 0) <= 0) {
       const raw = await getClobBalanceRaw(client);
-      setError(
-        "CLOB balance still $0. Debug — funder " +
+      setError("CLOB balance still $0. Debug — funder " +
         (acct.funder || "?").slice(0, 10) + "…, sigType " + acct.sigType +
-        ", response: " + JSON.stringify(raw)
-      );
+        ", response: " + JSON.stringify(raw));
     }
+  };
+
+  const doWrap = async () => {
+    setStep("working");
+    try {
+      // PIN sessions keep the unlocked signer in `wallet`; Privy sessions
+      // store a display object there, so fetch the real signer from Privy.
+      const signer = privy?.authenticated ? await privy.getSigner() : wallet;
+      await wrapToTradable(signer, acct.funder, setStatus);
+      setClobBalance(await syncClobBalance(client));
+      setFunding(await getFundingBreakdown(acct.funder));
+      setStep("ready"); setStatus("");
+    } catch (e) { fail(e); }
   };
 
   const modeLabel = target.mode === "fade" ? "FADE" : "COPY";
@@ -329,9 +361,7 @@ function SheetCore({ target, onClose, privy }) {
               onClick={() => privy.login()}>
               Continue with Telegram
             </button>
-            <button className="view-link" onClick={() => { setSetupMode("connect"); setStep("setup"); }}>
-              Already trading on Polymarket? Connect that balance instead
-            </button>
+
           </>
         )}
 
@@ -352,9 +382,7 @@ function SheetCore({ target, onClose, privy }) {
             <button className="btn primary" style={{ width: "100%" }} onClick={doCreateAccount}>
               Create trading account
             </button>
-            <button className="view-link" onClick={() => setSetupMode("connect")}>
-              Advanced: trade from an existing Polymarket account
-            </button>
+
           </>
         )}
 
@@ -371,16 +399,25 @@ function SheetCore({ target, onClose, privy }) {
                 autoComplete="off" onFocus={(e) => setTimeout(() => e.target.scrollIntoView({ block: "center", behavior: "smooth" }), 250)}
                 aria-label="Polymarket private key" />
             </div>
-            <div className="field">
-              <input ref={addrRef} placeholder="Your Polymarket address (0x…)"
-                autoComplete="off" onFocus={(e) => setTimeout(() => e.target.scrollIntoView({ block: "center", behavior: "smooth" }), 250)} aria-label="Polymarket address" />
-            </div>
-            <div className="preset-row" role="radiogroup" aria-label="Login method">
+            {pmAccountType !== 3 && (
+              <div className="field">
+                <input ref={addrRef} placeholder="Your Polymarket address (0x…)"
+                  autoComplete="off" onFocus={(e) => setTimeout(() => e.target.scrollIntoView({ block: "center", behavior: "smooth" }), 250)} aria-label="Polymarket address" />
+              </div>
+            )}
+            <div className="eyebrow" style={{ marginTop: 4 }}>How do you sign in to Polymarket?</div>
+            <div className="preset-row" role="radiogroup" aria-label="Login method" style={{ flexWrap: "wrap" }}>
+              <button className={`btn small ${pmAccountType === 3 ? "primary" : "ghost"}`}
+                onClick={() => setPmAccountType(3)}>Email/Google (2026+)</button>
               <button className={`btn small ${pmAccountType === 1 ? "primary" : "ghost"}`}
-                onClick={() => setPmAccountType(1)}>I log in with email/Google</button>
+                onClick={() => setPmAccountType(1)}>Email/Google (older)</button>
               <button className={`btn small ${pmAccountType === 2 ? "primary" : "ghost"}`}
-                onClick={() => setPmAccountType(2)}>I log in with a crypto wallet</button>
+                onClick={() => setPmAccountType(2)}>Crypto wallet</button>
             </div>
+            <p className="sheet-note" style={{ marginTop: 8 }}>
+              Most current email/Google accounts are "2026+". If your balance reads $0
+              after connecting, hit ↻ then try the other email option.
+            </p>
             <div className="field">
               <input ref={pinRef} type="password" inputMode="numeric" placeholder="Choose a PIN (4+ digits)"
                 autoComplete="off" onFocus={(e) => setTimeout(() => e.target.scrollIntoView({ block: "center", behavior: "smooth" }), 250)} aria-label="PIN" />
@@ -457,28 +494,29 @@ function SheetCore({ target, onClose, privy }) {
 
             {acct.sigType === 3 && (clobBalance ?? 0) <= 0 && (
               <>
-                <p className="sheet-note">
-                  Fund your trading account to start: deposit from any chain via
-                  Polymarket's bridge, or send pUSD (Polygon) directly to your trading
-                  address — tap to copy:{" "}
-                  <button className="btn small ghost mono"
-                    onClick={() => { navigator.clipboard?.writeText(acct.funder);
-                      window.Telegram?.WebApp?.HapticFeedback?.notificationOccurred?.("success"); }}>
-                    {acct.funder?.slice(0, 10)}… copy
-                  </button>
-                  {" "}Then hit ↻.
-                </p>
-                <p className="sheet-note">
-                  Rather skip the deposit? If you already have a Polymarket balance,
-                  you can trade it directly by importing the key from Polymarket
-                  Settings → Export Private Key. The key is encrypted with your PIN
-                  and kept only on this device — FadeBot's servers never see or store
-                  it. If pasting a key isn't for you, depositing works just as well.
-                </p>
-                <button className="btn ghost" style={{ width: "100%", marginBottom: 10 }}
-                  onClick={() => { setSetupMode("connect"); setStep("setup"); }}>
-                  Use my Polymarket balance instead
-                </button>
+                {funding && funding.wrappable > 0 ? (
+                  <>
+                    <p className="sheet-note">
+                      Found <b style={{ color: "var(--smart)" }}>${funding.wrappable.toFixed(2)} USDC</b> at
+                      your trading address. Polymarket trades in pUSD, so it needs one
+                      gasless conversion — then it's ready to bet with.
+                    </p>
+                    <button className="btn primary" style={{ width: "100%", marginBottom: 10 }} onClick={doWrap}>
+                      Convert ${funding.wrappable.toFixed(2)} to trading balance
+                    </button>
+                  </>
+                ) : (
+                  <p className="sheet-note">
+                    Fund your trading account: send USDC (Polygon) to your trading
+                    address — tap to copy:{" "}
+                    <button className="btn small ghost mono"
+                      onClick={() => { navigator.clipboard?.writeText(acct.funder);
+                        window.Telegram?.WebApp?.HapticFeedback?.notificationOccurred?.("success"); }}>
+                      {acct.funder?.slice(0, 10)}… copy
+                    </button>
+                    {" "}Then hit ↻ — the app will detect it and convert it for you.
+                  </p>
+                )}
               </>
             )}
 
