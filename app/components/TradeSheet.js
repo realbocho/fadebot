@@ -12,7 +12,7 @@ import {
 import { ensureDepositAccount, getDepositBalance } from "@/lib/deposit";
 const PM_ADDR_RE = /^0x[a-fA-F0-9]{40}$/;
 import {
-  createTradingClient, getClobBalance, syncClobBalance, placeMarketBuy, builderCodeConfigured,
+  createTradingClient, getClobBalance, getClobBalanceRaw, syncClobBalance, placeMarketBuy, builderCodeConfigured,
 } from "@/lib/clob";
 
 const PRESETS = [10, 25, 50, 100];
@@ -152,9 +152,10 @@ function SheetCore({ target, onClose, privy }) {
       setNeedsApproval(false);
     } else {
       // Connected Polymarket account (proxy/Safe): funds live on Polymarket —
-      // no POL, no approvals, balance comes straight from the CLOB.
+      // no POL, no approvals. The CLOB balance cache must be synced first or a
+      // real balance can read as $0.
       setBalances(null);
-      setClobBalance(await getClobBalance(c));
+      setClobBalance(await syncClobBalance(c));
       setNeedsApproval(false);
     }
     setStep("ready");
@@ -286,7 +287,18 @@ function SheetCore({ target, onClose, privy }) {
   const refresh = async () => {
     if (!wallet || !client) return;
     if (acct.sigType === 0) setBalances(await getBalances(wallet.address));
-    setClobBalance(acct.sigType === 3 ? await syncClobBalance(client) : await getClobBalance(client));
+    const bal = await syncClobBalance(client);
+    setClobBalance(bal);
+    // Diagnostic: if a connected account still reads $0, surface what the CLOB
+    // actually returned and which funder/sigType we queried with.
+    if (acct.sigType !== 0 && (bal ?? 0) <= 0) {
+      const raw = await getClobBalanceRaw(client);
+      setError(
+        "CLOB balance still $0. Debug — funder " +
+        (acct.funder || "?").slice(0, 10) + "…, sigType " + acct.sigType +
+        ", response: " + JSON.stringify(raw)
+      );
+    }
   };
 
   const modeLabel = target.mode === "fade" ? "FADE" : "COPY";
