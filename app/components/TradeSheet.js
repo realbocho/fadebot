@@ -128,7 +128,13 @@ function SheetCore({ target, onClose, privy }) {
     } catch (e) { fail(e); }
   };
 
-  const fail = (e) => { setError(e.message || String(e)); setStep("error"); };
+  const fail = (e) => {
+    const raw = e?.data?.error || e?.message || String(e);
+    const msg = /wallet busy|active action/i.test(raw)
+      ? "The relayer is still finishing your previous transaction. Wait 1–2 minutes, then tap the button again — no funds were moved."
+      : raw;
+    setError(msg); setStep("error");
+  };
 
   const afterUnlock = async ({ wallet: w, funder, sigType }) => {
     setStatus("Connecting to the order book…");
