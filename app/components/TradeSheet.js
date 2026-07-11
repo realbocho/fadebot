@@ -506,17 +506,24 @@ function SheetCore({ target, onClose, privy }) {
                     </button>
                   </>
                 ) : funding && funding.usdc > 0 ? (
-                  <p className="sheet-note">
-                    Found <b style={{ color: "var(--crowd)" }}>${funding.usdc.toFixed(2)} native USDC</b>,
-                    but the converter only accepts <b>USDC.e</b> (bridged USDC). Easiest
-                    fix: fund via Polymarket's own deposit flow (it auto-converts any
-                    token), or send USDC.e on Polygon to your trading address:{" "}
-                    <button className="btn small ghost mono"
+                  <>
+                    <p className="sheet-note">
+                      Found <b style={{ color: "var(--crowd)" }}>${funding.usdc.toFixed(2)} native USDC</b> at
+                      your address. The one-tap converter handles USDC.e; for native
+                      USDC the cleanest path is Polymarket's own deposit flow, which
+                      auto-converts any token to a tradable balance. Send it to your
+                      trading address there:
+                    </p>
+                    <button className="btn ghost mono" style={{ width: "100%", marginBottom: 8 }}
                       onClick={() => { navigator.clipboard?.writeText(acct.funder);
                         window.Telegram?.WebApp?.HapticFeedback?.notificationOccurred?.("success"); }}>
-                      {acct.funder?.slice(0, 10)}… copy
+                      Copy address {acct.funder?.slice(0, 8)}…{acct.funder?.slice(-4)}
                     </button>
-                  </p>
+                    <button className="btn primary" style={{ width: "100%", marginBottom: 10 }}
+                      onClick={() => window.Telegram?.WebApp?.openLink?.("https://polymarket.com/deposit") || window.open("https://polymarket.com/deposit")}>
+                      Open Polymarket deposit
+                    </button>
+                  </>
                 ) : (
                   <p className="sheet-note">
                     Fund your trading account: send USDC (Polygon) to your trading
