@@ -88,6 +88,7 @@ function SheetCore({ target, onClose, privy }) {
   const [myShares, setMyShares] = useState(0); // shares held of THIS market's token
   const [claimable, setClaimable] = useState(null); // { items: [{conditionId, negRisk}], total }
   const [showWithdraw, setShowWithdraw] = useState(false);
+  const [showDeposit, setShowDeposit] = useState(false);
   const [wdAmt, setWdAmt] = useState("");
   const wdAddrRef = useRef(null);
 
@@ -103,6 +104,9 @@ function SheetCore({ target, onClose, privy }) {
           (p) => String(p.asset ?? p.tokenId ?? p.token_id) === String(target.tokenID)
         );
         setMyShares(Number(mine?.size ?? 0));
+
+        // First-time users land with $0 — open the deposit guide for them.
+        setShowDeposit((v) => v || (Number(clobBalance ?? 0) <= 0));
 
         // Redeemable = market resolved, tokens not yet burned for pUSD.
         const seen = new Set();
@@ -571,9 +575,11 @@ function SheetCore({ target, onClose, privy }) {
         {step === "ready" && (
           <>
             <div className="wallet-strip mono">
-              <span>
+              <span style={{ cursor: "pointer" }} title="Tap to copy"
+                onClick={() => { navigator.clipboard?.writeText(acct.funder || wallet.address);
+                  window.Telegram?.WebApp?.HapticFeedback?.notificationOccurred?.("success"); }}>
                 {acct.sigType !== 0 ? "PM " : ""}
-                {(acct.funder || wallet.address).slice(0, 6)}…{(acct.funder || wallet.address).slice(-4)}
+                {(acct.funder || wallet.address).slice(0, 6)}…{(acct.funder || wallet.address).slice(-4)} ⧉
               </span>
               <span>
                 {clobBalance != null ? `${fmt(clobBalance)} tradable` : balances ? `${fmt(balances.collateral)} USDC` : "…"}
@@ -581,6 +587,31 @@ function SheetCore({ target, onClose, privy }) {
               </span>
               <button className="btn small ghost" onClick={refresh}>↻</button>
             </div>
+
+            {acct.sigType === 3 && (
+              <>
+                <button className="view-link" style={{ margin: "0 0 8px", textAlign: "left" }}
+                  onClick={() => setShowDeposit((v) => !v)}>
+                  {showDeposit ? "▾ Deposit funds" : "▸ Deposit funds"}
+                </button>
+                {showDeposit && (
+                  <div style={{ marginBottom: 12 }}>
+                    <p className="sheet-note">
+                      1. Send <b>USDC on the Polygon network</b> (USDC.e or native — both work)
+                      to your trading address below.<br />
+                      2. Wait ~1 min, then tap ↻ above.<br />
+                      3. Tap the <b>Convert</b> button that appears — done, ready to bet.<br />
+                      ⚠️ Polygon network only. Other chains can lose your funds.
+                    </p>
+                    <button className="btn ghost mono" style={{ width: "100%", wordBreak: "break-all", whiteSpace: "normal" }}
+                      onClick={() => { navigator.clipboard?.writeText(acct.funder);
+                        window.Telegram?.WebApp?.HapticFeedback?.notificationOccurred?.("success"); }}>
+                      {acct.funder} ⧉ tap to copy
+                    </button>
+                  </div>
+                )}
+              </>
+            )}
 
             {acct.sigType === 3 && claimable && (
               <div className="quote mono" style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
