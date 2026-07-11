@@ -349,7 +349,9 @@ function SheetCore({ target, onClose, privy }) {
     if (acct.sigType === 3 && (bal ?? 0) <= 0) {
       // Most common cause: raw USDC sent directly to the address — it must be
       // wrapped into pUSD before the CLOB counts it. Detect and offer one tap.
-      const fb = await getFundingBreakdown(acct.funder);
+      let fb;
+      try { fb = await getFundingBreakdown(acct.funder); }
+      catch (e) { setError(e.message); return; }
       setFunding(fb);
       if (fb.usdce <= 0 && fb.usdc <= 0 && fb.pusd <= 0) {
         const raw = await getClobBalanceRaw(client);
