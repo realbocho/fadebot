@@ -18,7 +18,39 @@ import {
 const PRESETS = [10, 25, 50, 100];
 const fmt = (n) => "$" + Number(n).toLocaleString("en-US", { maximumFractionDigits: 2 });
 
-export default function TradeSheet({ target, onClose }) {
+const PRIVY_ENABLED = Boolean(process.env.NEXT_PUBLIC_PRIVY_APP_ID);
+
+// Dispatcher: with Privy configured, users get zero-click Telegram login and a
+// gasless deposit-wallet account — no PIN, no keys. Without it, the PIN-wallet
+// flow below still works, so Privy setup is optional.
+export default function TradeSheet(props) {
+  return PRIVY_ENABLED ? <PrivySheet {...props} /> : <SheetCore {...props} privy={null} />;
+}
+
+function PrivySheet(props) {
+  // Hooks live in a separate component so they only run inside PrivyProvider.
+  const { usePrivy, useWallets } = require("@privy-io/react-auth");
+  const { ready, authenticated, login, logout } = usePrivy();
+  const { wallets } = useWallets();
+
+  const getSigner = async () => {
+    const embedded =
+      wallets.find((w) => w.walletClientType === "privy") || wallets[0];
+    if (!embedded) throw new Error("No wallet available yet — try again in a second.");
+    const eip1193 = await embedded.getEthereumProvider();
+    const { providers } = await import("ethers");
+    return new providers.Web3Provider(eip1193).getSigner();
+  };
+
+  return (
+    <SheetCore
+      {...props}
+      privy={{ ready, authenticated, login, logout, getSigner, walletCount: wallets.length }}
+    />
+  );
+}
+
+function SheetCore({ target, onClose, privy }) {
   // target: { market, outcome, tokenID, refPrice, mode: 'copy'|'fade' }
   const [step, setStep] = useState("boot"); // boot|setup|unlock|ready|working|done|error
   const pinRef = useRef(null);
@@ -53,8 +85,47 @@ export default function TradeSheet({ target, onClose }) {
   const [result, setResult] = useState(null);
 
   useEffect(() => {
-    hasWallet().then((exists) => setStep(exists ? "unlock" : "setup"));
-  }, []);
+    (async () => {
+      // A locally connected Polymarket account (key import) always wins —
+      // the user explicitly chose to trade that balance.
+      if (await hasWallet()) { setStep("unlock"); return; }
+      if (privy) {
+        if (!privy.ready) return; // wait for Privy init
+        if (!privy.authenticated) setStep("privy-login");
+        else startPrivySession();
+        return;
+      }
+      setStep("setup");
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [privy?.ready, privy?.authenticated, privy?.walletCount]);
+
+  const startPrivySession = async () => {
+    setStep("working");
+    try {
+      setStatus("Setting up your account…");
+      const signer = await privy.getSigner();
+      const { depositWallet } = await ensureDepositAccount(signer, setStatus);
+      const c = await createTradingClient(signer, { sigType: 3, funder: depositWallet });
+      setWallet({ address: depositWallet }); // display only
+      setAcct({ sigType: 3, funder: depositWallet.toLowerCase() });
+      setClient(c);
+      setBalances(null);
+      setClobBalance(await syncClobBalance(c));
+      setNeedsApproval(false);
+      // Link for Portfolio tab (best effort)
+      try {
+        await fetch("/api/user", {
+          method: "POST",
+          headers: { "Content-Type": "application/json",
+            "x-tg-init-data": window.Telegram?.WebApp?.initData || "" },
+          body: JSON.stringify({ pm_address: depositWallet }),
+        });
+      } catch { /* non-blocking */ }
+      setStep("ready");
+      setStatus("");
+    } catch (e) { fail(e); }
+  };
 
   const fail = (e) => { setError(e.message || String(e)); setStep("error"); };
 
@@ -236,6 +307,22 @@ export default function TradeSheet({ target, onClose }) {
 
         {step === "boot" && <div className="loading">Checking device…</div>}
 
+        {step === "privy-login" && (
+          <>
+            <p className="sheet-note">
+              One tap to start trading — your account is created from your Telegram
+              identity. No seed phrases, no keys, no gas.
+            </p>
+            <button className="btn primary" style={{ width: "100%" }}
+              onClick={() => privy.login()}>
+              Continue with Telegram
+            </button>
+            <button className="view-link" onClick={() => { setSetupMode("connect"); setStep("setup"); }}>
+              Already trading on Polymarket? Connect that balance instead
+            </button>
+          </>
+        )}
+
         {step === "setup" && !setupMode && (
           <>
             <p className="sheet-note">
@@ -357,17 +444,30 @@ export default function TradeSheet({ target, onClose }) {
             </div>
 
             {acct.sigType === 3 && (clobBalance ?? 0) <= 0 && (
-              <p className="sheet-note">
-                Fund your trading account to start: deposit from any chain via
-                Polymarket's bridge, or send pUSD (Polygon) directly to your trading
-                address — tap to copy:{" "}
-                <button className="btn small ghost mono"
-                  onClick={() => { navigator.clipboard?.writeText(acct.funder);
-                    window.Telegram?.WebApp?.HapticFeedback?.notificationOccurred?.("success"); }}>
-                  {acct.funder?.slice(0, 10)}… copy
+              <>
+                <p className="sheet-note">
+                  Fund your trading account to start: deposit from any chain via
+                  Polymarket's bridge, or send pUSD (Polygon) directly to your trading
+                  address — tap to copy:{" "}
+                  <button className="btn small ghost mono"
+                    onClick={() => { navigator.clipboard?.writeText(acct.funder);
+                      window.Telegram?.WebApp?.HapticFeedback?.notificationOccurred?.("success"); }}>
+                    {acct.funder?.slice(0, 10)}… copy
+                  </button>
+                  {" "}Then hit ↻.
+                </p>
+                <p className="sheet-note">
+                  Rather skip the deposit? If you already have a Polymarket balance,
+                  you can trade it directly by importing the key from Polymarket
+                  Settings → Export Private Key. The key is encrypted with your PIN
+                  and kept only on this device — FadeBot's servers never see or store
+                  it. If pasting a key isn't for you, depositing works just as well.
+                </p>
+                <button className="btn ghost" style={{ width: "100%", marginBottom: 10 }}
+                  onClick={() => { setSetupMode("connect"); setStep("setup"); }}>
+                  Use my Polymarket balance instead
                 </button>
-                {" "}Then hit ↻.
-              </p>
+              </>
             )}
 
             {acct.sigType === 1 || acct.sigType === 2 ? (clobBalance ?? 0) <= 0 && (
@@ -395,8 +495,9 @@ export default function TradeSheet({ target, onClose }) {
               </button>
             )}
 
-            <button className="view-link" style={{ margin: "0 0 10px", textAlign: "left" }} onClick={doReset}>
-              Switch account / remove wallet from device
+            <button className="view-link" style={{ margin: "0 0 10px", textAlign: "left" }}
+              onClick={privy ? () => { privy.logout(); setStep("privy-login"); } : doReset}>
+              {privy ? "Log out" : "Switch account / remove wallet from device"}
             </button>
 
             <div className="eyebrow">Amount</div>

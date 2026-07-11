@@ -1,5 +1,6 @@
 import "./globals.css";
 import Script from "next/script";
+import Providers from "./providers";
 
 export const metadata = {
   title: "FadeBot — Smart Money X-Ray",
@@ -26,7 +27,7 @@ export default function RootLayout({ children }) {
       </head>
       <body>
         <Script src="https://telegram.org/js/telegram-web-app.js" strategy="beforeInteractive" />
-        {children}
+        <Providers>{children}</Providers>
       </body>
     </html>
   );

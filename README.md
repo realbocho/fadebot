@@ -105,6 +105,23 @@ that is what attributes volume and accrues your fees.
    - `NEXT_PUBLIC_RELAYER_URL` — defaults to the Polymarket relayer; override
      only if docs specify differently.
 
+### Zero-click Telegram login (Privy) — recommended
+
+With `NEXT_PUBLIC_PRIVY_APP_ID` set, the trade sheet becomes: **"Continue with
+Telegram"** → account exists. No PIN, no keys, no seed phrase — Privy provisions
+a non-custodial embedded wallet from the user's Telegram identity, and the
+deposit-wallet flow below runs on top of it (gasless deploy + approvals).
+Without the env var the app falls back to the PIN-wallet flow, so this is safe
+to enable later.
+
+Setup (~15 min):
+1. privy.io → create an app → copy the **App ID** → `NEXT_PUBLIC_PRIVY_APP_ID`.
+2. Dashboard → Login methods → enable **Telegram** → paste your **bot token**
+   and **bot handle** (from BotFather).
+3. BotFather → `/setdomain` on your bot → your Vercel domain. Also add
+   `web.telegram.org` to Privy's allowed domains (for Telegram Web users).
+4. Redeploy (uncached).
+
 ### Account model (official deposit-wallet flow)
 
 Primary onboarding is Polymarket's canonical V2 flow: the app generates an
