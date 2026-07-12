@@ -13,6 +13,7 @@ export function useApi() {
       typeof window !== "undefined" ? window.Telegram?.WebApp?.initData || "" : "";
     const res = await fetch(path, {
       ...options,
+      cache: "no-store",
       headers: {
         "Content-Type": "application/json",
         "x-tg-init-data": initData,
