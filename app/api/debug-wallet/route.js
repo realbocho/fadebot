@@ -12,10 +12,12 @@ export async function GET(req) {
   let address = new URL(req.url).searchParams.get("address");
 
   // No address? Pull the first whale from the DB so you don't have to find one.
+  let storedRow = null;
   if (!address) {
     try {
-      const { data } = await db().from("whales").select("address,name").limit(1);
-      address = data?.[0]?.address;
+      const { data } = await db().from("whales").select("*").limit(1);
+      storedRow = data?.[0] || null;
+      address = storedRow?.address;
     } catch { /* fall through */ }
   }
   if (!address)
@@ -48,7 +50,11 @@ export async function GET(req) {
 
   return NextResponse.json({
     address,
-    computedStats: stats,
+    storedInDB: storedRow
+      ? { win_rate: storedRow.win_rate, closed_count: storedRow.closed_count, streak: storedRow.streak, tier: storedRow.tier, updated_at: storedRow.updated_at }
+      : "queried by explicit address — not from DB",
+    computedNow: stats,
+    match: storedRow && stats ? storedRow.win_rate === stats.win_rate : null,
     statsError,
     topByPnl: slim(raw),
     bottomByPnl: slim(rawAsc),
