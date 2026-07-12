@@ -2,6 +2,9 @@ import { NextResponse } from "next/server";
 import { db } from "@/lib/supabase";
 import { requireUser } from "@/lib/telegram";
 
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
+
 export async function GET(req) {
   try {
     const { data: whales, error } = await db()
