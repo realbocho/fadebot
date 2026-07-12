@@ -1,4 +1,6 @@
 import { NextResponse } from "next/server";
+export const dynamic = "force-dynamic";
+
 import { db } from "@/lib/supabase";
 import { resolveMarket, fetchMarketPositions, smartMoneySummary, marketNativeSummary, fetchMarketPositionsRaw } from "@/lib/polymarket";
 
