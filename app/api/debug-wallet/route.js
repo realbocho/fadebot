@@ -21,27 +21,23 @@ export async function GET(req) {
   if (!address)
     return NextResponse.json({ error: "no address and no whales in DB" }, { status: 400 });
 
-  let raw = null, rawError = null;
+  let raw = null, rawError = null, rawAsc = null;
   try {
-    const res = await fetch(`${DATA_API}/v1/closed-positions?user=${address}&limit=5`);
+    const res = await fetch(`${DATA_API}/v1/closed-positions?user=${address}&limit=10`);
     raw = res.ok ? await res.json() : { status: res.status, body: (await res.text()).slice(0, 400) };
+    // Also fetch ascending — if losses exist, they surface as the most-negative
+    // realizedPnl here. If ASC still shows only positives, this endpoint simply
+    // doesn't return losing positions (winners-only).
+    const resAsc = await fetch(`${DATA_API}/v1/closed-positions?user=${address}&limit=10&sortBy=REALIZEDPNL&sortDirection=ASC`);
+    rawAsc = resAsc.ok ? await resAsc.json() : { status: resAsc.status };
   } catch (e) {
     rawError = e.message;
   }
 
-  // Reduce raw to just the P&L-relevant fields so it's readable.
-  const sample = Array.isArray(raw)
-    ? raw.map((p) => ({
-        title: p.title,
-        cashPnl: p.cashPnl,
-        realizedPnl: p.realizedPnl,
-        totalPnl: p.totalPnl,
-        currentValue: p.currentValue,
-        initialValue: p.initialValue,
-        redeemable: p.redeemable,
-        outcome: p.outcome,
-      }))
-    : raw;
+  const slim = (arr) =>
+    Array.isArray(arr)
+      ? arr.map((p) => ({ title: p.title, realizedPnl: p.realizedPnl, outcome: p.outcome }))
+      : arr;
 
   let stats = null, statsError = null;
   try {
@@ -50,5 +46,12 @@ export async function GET(req) {
     statsError = e.message;
   }
 
-  return NextResponse.json({ address, computedStats: stats, statsError, rawSample: sample, rawError });
+  return NextResponse.json({
+    address,
+    computedStats: stats,
+    statsError,
+    topByPnl: slim(raw),
+    bottomByPnl: slim(rawAsc),
+    rawError,
+  });
 }
