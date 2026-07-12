@@ -1,4 +1,6 @@
 import { NextResponse } from "next/server";
+export const dynamic = "force-dynamic";
+
 import { db } from "@/lib/supabase";
 import { requireUser } from "@/lib/telegram";
 import { fetchUserPositions } from "@/lib/polymarket";
