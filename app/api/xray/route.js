@@ -21,7 +21,9 @@ export async function GET(req) {
     let summary = smartMoneySummary(positions, byAddr);
     let source = "tracked";
     if (!summary.lean && !summary.fadeAlerts.length) {
-      summary = marketNativeSummary(positions);
+      const fallback = marketNativeSummary(positions);
+      // Keep any fade alerts from the tracked pass — the fallback doesn't compute them.
+      summary = { ...fallback, fadeAlerts: summary.fadeAlerts };
       source = "market";
     }
 
