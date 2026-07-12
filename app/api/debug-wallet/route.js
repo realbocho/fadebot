@@ -1,14 +1,25 @@
 import { NextResponse } from "next/server";
 import { fetchWalletStats } from "@/lib/polymarket";
+import { db } from "@/lib/supabase";
 
 const DATA_API = "https://data-api.polymarket.com";
 
-// Diagnostic: /api/debug-wallet?address=0x...
+// Diagnostic: /api/debug-wallet  (no address needed — grabs a stored whale)
+// or /api/debug-wallet?address=0x...
 // Shows the raw closed-positions sample alongside our computed stats, so we can
 // see exactly why win rates were coming out uniformly 100%.
 export async function GET(req) {
-  const address = new URL(req.url).searchParams.get("address");
-  if (!address) return NextResponse.json({ error: "address required" }, { status: 400 });
+  let address = new URL(req.url).searchParams.get("address");
+
+  // No address? Pull the first whale from the DB so you don't have to find one.
+  if (!address) {
+    try {
+      const { data } = await db().from("whales").select("address,name").limit(1);
+      address = data?.[0]?.address;
+    } catch { /* fall through */ }
+  }
+  if (!address)
+    return NextResponse.json({ error: "no address and no whales in DB" }, { status: 400 });
 
   let raw = null, rawError = null;
   try {
