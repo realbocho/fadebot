@@ -104,12 +104,30 @@ function XrayCard({ data, onTrade }) {
         </>
       )}
 
-      {summary.fadeAlerts.map((e, i) => (
-        <div className="alert-fade" key={i}>
-          <b>FADE SIGNAL</b> — {e.whaleName} is on a {-e.streak}-loss streak and holds{" "}
-          {e.outcome} {fmtUsd(e.value)}.
-        </div>
-      ))}
+      {summary.fadeAlerts.length > 0 && (
+        <>
+          <div className="eyebrow" style={{ marginTop: 12, color: "var(--danger, #ff5c5c)" }}>
+            ⚠ Losing streaks in this market
+          </div>
+          <div className="sheet-note" style={{ marginTop: 2, marginBottom: 6, fontSize: 12 }}>
+            Tracked wallets on cold streaks holding a position here. Some traders
+            fade these — decide for yourself.
+          </div>
+          {summary.fadeAlerts.map((e, i) => (
+            <div className="row" key={i}>
+              <div className="who">
+                <span className="whale-name">{e.whaleName}</span>
+                <span className="sub" style={{ color: "var(--danger, #ff5c5c)" }}>
+                  {-e.streak}-loss streak{e.winRate != null ? ` · WR ${pct(e.winRate)}` : ""}
+                </span>
+              </div>
+              <div className="nums">
+                <b>{e.outcome} {fmtUsd(e.value)}</b>
+              </div>
+            </div>
+          ))}
+        </>
+      )}
 
       <div className="btn-pair">
         <button className="btn primary" onClick={() => trade("copy")}>
