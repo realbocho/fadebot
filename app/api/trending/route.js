@@ -1,4 +1,6 @@
 import { NextResponse } from "next/server";
+export const dynamic = "force-dynamic";
+
 import { fetchTrending } from "@/lib/polymarket";
 
 export const revalidate = 120;
