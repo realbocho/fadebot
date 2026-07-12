@@ -10,7 +10,7 @@ export async function GET(req) {
     const { data: whales, error } = await db()
       .from("whales")
       .select("*")
-      .order("win_rate", { ascending: false, nullsFirst: false });
+      .order("total_pnl", { ascending: false, nullsFirst: false });
     if (error) throw error;
 
     let following = [];
