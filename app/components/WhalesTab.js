@@ -18,6 +18,11 @@ function WhaleRow({ w, following, onToggle }) {
           WR {pct(w.win_rate)} · {w.closed_count} settled ·{" "}
           {w.streak > 0 ? `${w.streak}W streak` : w.streak < 0 ? `${-w.streak}L streak` : "no streak"}
         </span>
+        {w.total_pnl != null && (
+          <span className={w.total_pnl >= 0 ? "pnl-pos" : "pnl-neg"} style={{ fontWeight: 600 }}>
+            {w.total_pnl >= 0 ? "+" : "−"}{fmtUsd(Math.abs(w.total_pnl))} total profit
+          </span>
+        )}
       </div>
       <span className={`badge ${w.tier}`}>{w.tier}</span>
       <button
