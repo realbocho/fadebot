@@ -34,7 +34,7 @@ const TABS = [
 ];
 
 export default function App() {
-  const [tab, setTab] = useState("markets");
+  const [tab, setTab] = useState("whales");
   // Deep-link payload: t.me/YourBot/app?startapp=<market-slug>
   const [startSlug, setStartSlug] = useState(null);
 
@@ -43,11 +43,17 @@ export default function App() {
     if (!tg) return;
     tg.ready();
     tg.expand();
-    tg.setHeaderColor?.("#0A0F1C");
-    tg.setBackgroundColor?.("#0A0F1C");
+    tg.setHeaderColor?.("#070b14");
+    tg.setBackgroundColor?.("#070b14");
     const param = tg.initDataUnsafe?.start_param;
-    if (param) setStartSlug(param);
+    if (param) { setStartSlug(param); setTab("markets"); }
   }, []);
+
+  // A whale bet was tapped → jump to the market hunt screen for that slug.
+  const openMarket = (slug) => {
+    setStartSlug(slug);
+    setTab("markets");
+  };
 
   return (
     <div className="app">
@@ -60,7 +66,7 @@ export default function App() {
       </header>
 
       {tab === "markets" && <MarketsTab startSlug={startSlug} />}
-      {tab === "whales" && <WhalesTab />}
+      {tab === "whales" && <WhalesTab onOpenMarket={openMarket} />}
       {tab === "portfolio" && <PortfolioTab />}
       {tab === "alerts" && <AlertsTab />}
 
