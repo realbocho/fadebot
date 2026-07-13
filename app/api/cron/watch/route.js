@@ -19,17 +19,22 @@ function narrative(whale, ev) {
 
   let hook = "";
   if (whale.tier === "fade" && whale.streak < 0)
-    hook = ` This wallet is on a ${-whale.streak}-loss streak. Fade?`;
+    hook = ` 🩸 On a ${-whale.streak}-loss streak — wounded. Harpoon it?`;
   else if (whale.win_rate >= 0.7)
-    hook = ` This wallet wins ${Math.round(whale.win_rate * 100)}% of settled positions.`;
+    hook = ` 🎯 Wins ${Math.round(whale.win_rate * 100)}% of its bets. Ride or harpoon?`;
 
   const link = slug ? `\nhttps://polymarket.com/event/${slug}` : "";
-  return `🐋 ${whale.name || whale.address.slice(0, 8)} just placed $${usd.toLocaleString()} on ${outcome} at ${price.toFixed(2)} — "${title}".${hook}${link}`;
+  return `🐋 ${whale.name || whale.address.slice(0, 8)} just moved $${usd.toLocaleString()} on ${outcome} at ${price.toFixed(2)} — "${title}".${hook}${link}`;
 }
 
 // Poll followed whales' activity → push new BUY trades to followers.
 export async function GET(req) {
   if (!authorized(req)) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
+  // Only alert on meaningful buys, and never spam.
+  const MIN_USD = Number(process.env.ALERT_MIN_USD || 500);   // ignore small trades
+  const MAX_PER_WHALE = Number(process.env.ALERT_MAX_PER_WHALE || 1); // at most N alerts/whale/run
+  const FRESH_SECONDS = Number(process.env.ALERT_FRESH_SECONDS || 900); // only trades newer than this
 
   try {
     // Only whales that at least one person follows
@@ -44,6 +49,7 @@ export async function GET(req) {
     const { data: whales } = await db().from("whales").select("*").in("address", addresses);
     const whaleByAddr = Object.fromEntries((whales || []).map((w) => [w.address, w]));
 
+    const now = Date.now();
     let sent = 0;
     for (const address of addresses) {
       const whale = whaleByAddr[address];
@@ -53,6 +59,7 @@ export async function GET(req) {
       try { events = await fetchActivity(address, 20); }
       catch (e) { console.error("activity failed", address, e.message); continue; }
 
+      let alertedThisWhale = 0;
       for (const ev of events) {
         const type = String(pick(ev, "type") || "").toUpperCase();
         const side = String(pick(ev, "side") || "").toUpperCase();
@@ -61,14 +68,26 @@ export async function GET(req) {
         const id = String(pick(ev, "transactionHash", "id") || "");
         if (!id) continue;
 
-        // idempotent: primary-key insert fails on duplicates
+        const usd = Number(pick(ev, "usdcSize", "size") || 0);
+        const ts = Number(pick(ev, "timestamp", "matchtime") || 0) * 1000;
+        const isFresh = ts > 0 && (now - ts) <= FRESH_SECONDS * 1000;
+
+        // Record every trade as seen so it never alerts later — but only
+        // actually notify for fresh, large trades within the per-whale cap.
+        // This kills the follow-time flood (old trades get baselined silently)
+        // and the small-trade spam.
         const { error } = await db().from("seen_events").insert({ id });
-        if (error) continue; // already seen
+        if (error) continue; // already seen → skip
+
+        if (usd < MIN_USD) continue;           // too small to alert
+        if (!isFresh) continue;                // old trade — baselined, no alert
+        if (alertedThisWhale >= MAX_PER_WHALE) continue; // cap per whale per run
 
         const text = narrative(whale, ev);
         for (const tgId of followers[address]) {
           if (await sendMessage(tgId, text)) sent++;
         }
+        alertedThisWhale++;
       }
       await new Promise((r) => setTimeout(r, 150));
     }
