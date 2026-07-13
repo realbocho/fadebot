@@ -35,10 +35,10 @@ export default function PortfolioTab() {
   if (!state.linked) {
     return (
       <div className="card">
-        <div className="eyebrow">Link your Polymarket wallet</div>
-        <h3>See your open positions here</h3>
+        <div className="eyebrow">🔱 Link your wallet</div>
+        <h3>Track your bounty here</h3>
         <p className="empty" style={{ textAlign: "left", padding: "10px 0" }}>
-          Paste your Polymarket wallet address (read-only — FadeBot never asks for keys
+          Paste your Polymarket wallet address (read-only — HARPOON never asks for keys
           or custody of funds). Find it on your Polymarket profile page.
         </p>
         <div className="field">
@@ -56,14 +56,14 @@ export default function PortfolioTab() {
   return (
     <div>
       <div className="card">
-        <div className="eyebrow">Portfolio · {state.address.slice(0, 6)}…{state.address.slice(-4)}</div>
+        <div className="eyebrow">🔱 Bounty · {state.address.slice(0, 6)}…{state.address.slice(-4)}</div>
         <div className="gauge-gapnum" style={{ textAlign: "left" }}>
           {fmtUsd(total)}
           <small>OPEN VALUE · P&L <span className={pnl >= 0 ? "pnl-pos" : "pnl-neg"}>{pnl >= 0 ? "+" : "−"}{fmtUsd(pnl)}</span></small>
         </div>
       </div>
 
-      {state.positions.length === 0 && <p className="empty">No open positions on this wallet.</p>}
+      {state.positions.length === 0 && <p className="empty">No active hunts on this wallet yet.</p>}
 
       {state.positions.map((p, i) => (
         <div className="card" key={i}>

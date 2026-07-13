@@ -24,12 +24,12 @@ function WhaleRow({ w, following, onToggle }) {
           </span>
         )}
       </div>
-      <span className={`badge ${w.tier}`}>{w.tier}</span>
+      <span className={`badge ${w.tier}`}>{w.tier === "smart" ? "APEX" : w.tier === "fade" ? "WOUNDED" : "LURKING"}</span>
       <button
         className={`btn small ${following ? "ghost" : "primary"}`}
         onClick={() => onToggle(w.address)}
       >
-        {following ? "Following" : "Follow"}
+        {following ? "🎯 Tracking" : "Track"}
       </button>
     </div>
   );
@@ -63,21 +63,21 @@ export default function WhalesTab() {
   const fade = whales.filter((w) => w.tier === "fade");
   const rest = whales.filter((w) => w.tier === "neutral");
 
-  if (loading) return <div className="loading">Loading the whale league…</div>;
+  if (loading) return <div className="loading">📡 Locating whales…</div>;
 
   return (
     <div>
       {error && <div className="err">{error}</div>}
       {!whales.length && (
         <p className="empty">
-          The whale league is empty. Run the refresh cron once after deploy —
+          No whales spotted yet. Run the refresh cron once after deploy —
           see README → “First run”.
         </p>
       )}
 
       {smart.length > 0 && (
         <>
-          <div className="section-title">Smart money — copy candidates</div>
+          <div className="section-title">🐋 Apex whales — the ones winning</div>
           <div className="card">
             {smart.map((w) => (
               <WhaleRow key={w.address} w={w} following={following.includes(w.address)} onToggle={toggle} />
@@ -88,7 +88,7 @@ export default function WhalesTab() {
 
       {fade.length > 0 && (
         <>
-          <div className="section-title">Fade watch — losing streaks</div>
+          <div className="section-title">🩸 Wounded whales — on cold streaks</div>
           <div className="card">
             {fade.map((w) => (
               <WhaleRow key={w.address} w={w} following={following.includes(w.address)} onToggle={toggle} />
@@ -99,7 +99,7 @@ export default function WhalesTab() {
 
       {rest.length > 0 && (
         <>
-          <div className="section-title">Tracked</div>
+          <div className="section-title">🌊 In the water</div>
           <div className="card">
             {rest.map((w) => (
               <WhaleRow key={w.address} w={w} following={following.includes(w.address)} onToggle={toggle} />

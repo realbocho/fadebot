@@ -462,7 +462,7 @@ function SheetCore({ target, onClose, privy }) {
     } catch (e) { fail(e); }
   };
 
-  const modeLabel = target.mode === "fade" ? "FADE" : "COPY";
+  const modeLabel = target.mode === "fade" ? "🔱 WHALES LOSE" : "🎯 WHALES WIN";
   const modeClass = target.mode === "fade" ? "danger" : "primary";
 
   return (
@@ -470,7 +470,7 @@ function SheetCore({ target, onClose, privy }) {
       <div className="sheet" onClick={(e) => e.stopPropagation()} role="dialog" aria-label="Trade">
         <div className="sheet-handle" />
         <div className="eyebrow">
-          {modeLabel} · buying <b style={{ color: "var(--text)" }}>{target.outcome}</b>
+          {modeLabel} — you're buying <b style={{ color: "var(--text)" }}>{target.outcome}</b>
         </div>
         <h3 style={{ marginBottom: 10 }}>{target.market.question}</h3>
 
@@ -520,7 +520,7 @@ function SheetCore({ target, onClose, privy }) {
             <p className="sheet-note">
               In Polymarket: Settings → <b>Export Private Key</b>. Paste it below with
               your Polymarket address (top of your profile page). The key is encrypted
-              with your PIN and stored only on this device — FadeBot's servers never
+              with your PIN and stored only on this device — HARPOON's servers never
               see it. Anyone with this key controls your funds; never share it in chat.
             </p>
             <div className="field">
@@ -563,7 +563,7 @@ function SheetCore({ target, onClose, privy }) {
           <>
             <p className="sheet-note">
               Trades are signed by a wallet that lives only on this device, locked with a
-              PIN. FadeBot's servers never see your key. Losing the PIN means losing
+              PIN. HARPOON's servers never see your key. Losing the PIN means losing
               access — back up the key after creating it. You'll need to fund it with
               USDC + a little POL (Polygon).
             </p>
@@ -775,7 +775,7 @@ function SheetCore({ target, onClose, privy }) {
 
             <div className="quote mono">
               <span>Ref. price {Number.isFinite(target.refPrice) ? target.refPrice.toFixed(2) : "market"} · fill-or-kill at best available</span>
-              <span>Includes Polymarket + FadeBot builder fees</span>
+              <span>Includes Polymarket + HARPOON builder fees</span>
             </div>
 
             <label className="confirm-line">
@@ -794,7 +794,7 @@ function SheetCore({ target, onClose, privy }) {
               return (
                 <button className={`btn ${modeClass}`} style={{ width: "100%" }}
                   disabled={!confirmed || usd < 1 || Boolean(blocked)} onClick={doBuy}>
-                  {blocked || `${modeLabel} — Buy ${target.outcome} for ${fmt(usd)}`}
+                  {blocked || `${target.mode === "fade" ? "🔱 Harpoon" : "🎯 Ride"} — Buy ${target.outcome} for ${fmt(usd)}`}
                 </button>
               );
             })()}

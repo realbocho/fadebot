@@ -27,10 +27,10 @@ export function useApi() {
 }
 
 const TABS = [
-  { id: "markets", label: "MARKETS", ico: "◎" },
-  { id: "whales", label: "WHALES", ico: "🐋" },
-  { id: "portfolio", label: "PORTFOLIO", ico: "▤" },
-  { id: "alerts", label: "ALERTS", ico: "▲" },
+  { id: "markets", label: "HUNT", ico: "🎯" },
+  { id: "whales", label: "TARGETS", ico: "🐋" },
+  { id: "portfolio", label: "BOUNTY", ico: "🔱" },
+  { id: "alerts", label: "SONAR", ico: "📡" },
 ];
 
 export default function App() {
@@ -54,9 +54,9 @@ export default function App() {
       <header className="header">
         <span className="ping" aria-hidden />
         <span className="logo">
-          FADE<em>BOT</em>
+          HAR<em>POON</em> 🔱
         </span>
-        <span className="tagline">smart money x-ray</span>
+        <span className="tagline">hunt the whales</span>
       </header>
 
       {tab === "markets" && <MarketsTab startSlug={startSlug} />}
@@ -65,7 +65,7 @@ export default function App() {
       {tab === "alerts" && <AlertsTab />}
 
       <p className="disclaimer">
-        Data from Polymarket public APIs. FadeBot is an information and entertainment
+        Data from Polymarket public APIs. HARPOON is an information and entertainment
         tool — not financial advice. Trading involves risk of loss. Not available in
         restricted regions.
       </p>

@@ -3,8 +3,8 @@ import Script from "next/script";
 import Providers from "./providers";
 
 export const metadata = {
-  title: "FadeBot — Smart Money X-Ray",
-  description: "See where Polymarket whales lean before you bet. Copy them — or fade them.",
+  title: "HARPOON — Hunt the Whales",
+  description: "Track Polymarket's biggest whales and bet on whether they win or lose. Ride with them, or harpoon them.",
 };
 
 export const viewport = {

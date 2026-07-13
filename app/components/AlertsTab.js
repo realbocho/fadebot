@@ -28,18 +28,18 @@ export default function AlertsTab() {
   return (
     <div>
       <div className="card">
-        <div className="eyebrow">How alerts work</div>
+        <div className="eyebrow">📡 How sonar works</div>
         <p style={{ fontSize: 13, lineHeight: 1.55, color: "var(--muted)" }}>
-          Follow a whale and FadeBot messages you in this chat the moment they place a
+          Track a whale and HARPOON pings you the moment it moves — so you can bet on whether it wins or wipes out
           new buy — with their streak and win rate so you can decide: copy, or fade.
           Every alert shows the whale's entry price next to the current price.
         </p>
       </div>
 
-      <div className="section-title">Following · {followed.length}</div>
+      <div className="section-title">🎯 On your radar · {followed.length}</div>
       {followed.length === 0 && (
         <p className="empty">
-          You're not following anyone yet. Head to the Whales tab and follow a wallet
+          No whales on your radar yet. Head to the Targets tab and track a whale
           to start getting pings.
         </p>
       )}

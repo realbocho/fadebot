@@ -1,18 +1,18 @@
-/* FadeBot — deep-sea sonar system.
-   Ink abyss base, phosphor cyan = smart money, amber = crowd, red = fade. */
+/* HARPOON — deep-sea whale hunt.
+   Abyssal black base, harpoon steel = ride, blood red = harpoon, whale-song cyan accents. */
 
 :root {
-  --ink: #0a0f1c;
-  --surface: #111a2b;
-  --surface-2: #16223a;
-  --line: #1f2d47;
-  --text: #e8eef7;
-  --muted: #8b98ad;
-  --smart: #37e0c8;
+  --ink: #070b14;
+  --surface: #0e1626;
+  --surface-2: #142136;
+  --line: #1e2d47;
+  --text: #eef3fb;
+  --muted: #7e8ca3;
+  --smart: #2dd4bf;
   --crowd: #f5b84d;
-  --fade: #ff5c6c;
-  --smart-dim: rgba(55, 224, 200, 0.12);
-  --fade-dim: rgba(255, 92, 108, 0.12);
+  --fade: #ff4d5e;
+  --smart-dim: rgba(45, 212, 191, 0.12);
+  --fade-dim: rgba(255, 77, 94, 0.12);
   --radius: 14px;
 }
 
@@ -231,4 +231,15 @@ html, body {
   background: none; border: 0; color: var(--muted); font-size: 11.5px;
   margin-top: 10px; cursor: pointer; width: 100%; text-align: center;
   font-family: 'IBM Plex Mono', ui-monospace, monospace;
+}
+
+/* Hunter bet framing — sits above the WIN/LOSE buttons */
+.bet-framing {
+  text-align: center;
+  font-family: 'Space Grotesk', system-ui, sans-serif;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+  margin: 14px 0 8px;
+  letter-spacing: 0.01em;
 }

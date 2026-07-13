@@ -22,11 +22,11 @@ function DivergenceGauge({ d }) {
       </div>
       <div className="gauge-labels">
         <span className="crowd-label">CROWD {pct(d.crowd)} {d.outcome}</span>
-        <span className="smart-label">WHALES {pct(d.smart)} {d.outcome}</span>
+        <span className="smart-label">🐋 WHALES {pct(d.smart)} {d.outcome}</span>
       </div>
       <div className="gauge-gapnum">
         {d.gap >= 0 ? "+" : ""}{pct(d.gap)}
-        <small>DIVERGENCE</small>
+        <small>WHALES vs CROWD</small>
       </div>
     </div>
   );
@@ -66,23 +66,23 @@ function XrayCard({ data, onTrade }) {
 
   return (
     <div className="card">
-      <div className="eyebrow">{!isMarketNative ? "Smart money x-ray" : holdersMode ? "Market holders" : "In-market smart money"}</div>
+      <div className="eyebrow">🎯 {!isMarketNative ? "Whales in the water" : holdersMode ? "Whales in this market" : "Whales feeding here"}</div>
       <h3>{market.question}</h3>
 
       {divergence ? (
         <DivergenceGauge d={divergence} />
       ) : summary.lean ? (
         <p className="empty">
-          Whales lean {pct(summary.lean.share)} {summary.lean.outcome} ({fmtUsd(summary.lean.totalUsd)} tracked)
+          🐋 Whales are {pct(summary.lean.share)} on {summary.lean.outcome} ({fmtUsd(summary.lean.totalUsd)} in the water)
         </p>
       ) : (
-        <p className="empty">{data.positionCount === 0 ? "Nobody holds a position in this market yet." : "Positions here are all under $10 — too thin to read."}</p>
+        <p className="empty">{data.positionCount === 0 ? "No whales in this market yet — calm waters." : "Only minnows here — positions too small to track."}</p>
       )}
 
       {summary.tracked.length > 0 && (
         <>
           <div className="eyebrow" style={{ marginTop: 12 }}>
-            {!isMarketNative ? "Tracked positions" : holdersMode ? "Largest holders in this market" : "Top profitable holders in this market"}
+            🐋 {!isMarketNative ? "The whales & their bets" : holdersMode ? "Biggest whales here" : "Whales in profit here"}
           </div>
           {summary.tracked.map((e, i) => (
             <div className="row" key={i}>
@@ -106,12 +106,12 @@ function XrayCard({ data, onTrade }) {
 
       {summary.fadeAlerts.length > 0 && (
         <>
-          <div className="eyebrow" style={{ marginTop: 12, color: "var(--danger, #ff5c5c)" }}>
-            ⚠ Losing streaks in this market
+          <div className="eyebrow" style={{ marginTop: 12, color: "var(--fade)" }}>
+            🩸 Wounded whales — bleeding here
           </div>
           <div className="sheet-note" style={{ marginTop: 2, marginBottom: 6, fontSize: 12 }}>
-            Tracked wallets on cold streaks holding a position here. Some traders
-            fade these — decide for yourself.
+            These whales are on cold streaks but still holding a position here.
+            Easy harpoon targets? You decide.
           </div>
           {summary.fadeAlerts.map((e, i) => (
             <div className="row" key={i}>
@@ -129,17 +129,20 @@ function XrayCard({ data, onTrade }) {
         </>
       )}
 
+      <div className="bet-framing">
+        Do the whales win this one, or wipe out? Place your bet 👇
+      </div>
       <div className="btn-pair">
         <button className="btn primary" onClick={() => trade("copy")}>
-          Copy whales
+          🎯 Whales WIN
         </button>
         <button className="btn danger" onClick={() => trade("fade")}>
-          Fade whales
+          🔱 Whales LOSE
         </button>
       </div>
       <button className="view-link" onClick={() =>
         window.Telegram?.WebApp?.openLink?.(`https://polymarket.com/event/${market.eventSlug || market.slug}`)}>
-        View on Polymarket ↗
+        Inspect the market ↗
       </button>
     </div>
   );
@@ -179,19 +182,19 @@ export default function MarketsTab({ startSlug }) {
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           onKeyDown={(e) => e.key === "Enter" && runXray(query)}
-          placeholder="Paste a Polymarket link…"
+          placeholder="Paste a Polymarket link to scan for whales…"
           aria-label="Polymarket market link"
         />
         <button className="btn primary" onClick={() => runXray(query)} disabled={loading}>
-          X-ray
+          🎯 Scan
         </button>
       </div>
 
-      {loading && <div className="loading">Scanning whale positions…</div>}
+      {loading && <div className="loading">📡 Scanning the depths for whales…</div>}
       {error && <div className="err">{error}</div>}
       {xray && <XrayCard data={xray} onTrade={setTradeTarget} />}
 
-      <div className="section-title">Trending — tap to x-ray</div>
+      <div className="section-title">🌊 Whale waters — tap to scan</div>
       <div className="grid">
         {trending.map((m) => (
           <button className="tile" key={m.slug} onClick={() => runXray(m.slug)}>
