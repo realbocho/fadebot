@@ -462,15 +462,21 @@ function SheetCore({ target, onClose, privy }) {
     } catch (e) { fail(e); }
   };
 
-  const modeLabel = target.mode === "fade" ? "🔱 WHALES LOSE" : "🎯 WHALES WIN";
   const modeClass = target.mode === "fade" ? "danger" : "primary";
 
   return (
     <div className="sheet-overlay" onClick={onClose}>
       <div className="sheet" onClick={(e) => e.stopPropagation()} role="dialog" aria-label="Trade">
         <div className="sheet-handle" />
-        <div className="eyebrow">
-          {modeLabel} — you're buying <b style={{ color: "var(--text)" }}>{target.outcome}</b>
+        <div className={`hunt-banner ${target.mode === "fade" ? "fade" : "win"}`}>
+          <div className="hunt-line">
+            {target.mode === "fade"
+              ? "🔱 Harpoon — you win if this whale is wrong"
+              : "🎯 Ride the whale — you win if they're right"}
+          </div>
+          <div className="hunt-detail">
+            ↳ Buying <b>{target.outcome}</b>{Number.isFinite(target.refPrice) ? ` @ ${target.refPrice.toFixed(2)}` : ""}
+          </div>
         </div>
         <h3 style={{ marginBottom: 10 }}>{target.market.question}</h3>
 
